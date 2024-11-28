@@ -19,7 +19,7 @@ typedef struct res_ {
   int statusCode;
   char *contentType;
   char *body;
-  int *fd; // file descriptor
+  char *filePath;
 } Response;
 
 typedef struct req_ {
@@ -183,6 +183,56 @@ void staticFiles(const char *dirPath) {
 //   return buffer;
 // }
 
+void SendResponse(int client, const char *filePath, char *fileType,
+                  int statusCode, char *header) {
+  int heap = 0;
+  if (header == NULL) {
+    header = malloc(sizeof(char) * 128);
+    heap = 1;
+  }
+  header = headerBuilder(fileType, statusCode, header, 128);
+
+  FILE *fp = fopen(filePath, "r");
+  fseek(fp, 0L, SEEK_END);
+  size_t size = ftell(fp);
+  fclose(fp);
+
+  int opened_fd = open(filePath, O_RDONLY);
+
+  int on = 1;
+  int off = 0;
+  off_t offset = 0;
+  ssize_t sent_bytes = 0;
+  // setsockopt(client, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on));
+  setsockopt(client, IPPROTO_TCP, TCP_CORK, &on, sizeof(on));
+
+  // printf("header Size %ld\nFile size, string %ld %d\n", strlen(header),
+  //        size, get_file_size(opened_fd));
+
+  send(client, header, strlen(header), 0);
+
+  // send(client, loadFileToString(filePath), size, 0);
+  while (offset < size) {
+    ssize_t current_bytes = sendfile(client, opened_fd, &offset, size - offset);
+    if (current_bytes <= 0) {
+      perror("sendfile error");
+      exit(EXIT_FAILURE);
+      break;
+    }
+    sent_bytes += current_bytes;
+  }
+  printf("Offset Sent, Size: %ld, %ld, %ld\n", offset, sent_bytes, size);
+  if (sent_bytes < size)
+    perror("Incomplete sendfile transmission");
+  setsockopt(client, IPPROTO_TCP, TCP_CORK, &off, sizeof(off));
+  // setsockopt(client, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on));
+  //   sendfile(client, opened_fd, 0, size);
+  close(opened_fd);
+  // close(client);
+  if (heap)
+    free(header);
+}
+
 void *process() {
   // char header[64] = "HTTP/1.1 200 OK\r\n\n";
   // char header404[128] = "HTTP/1.1 404 Not Found\r\n\r\n";
@@ -258,17 +308,17 @@ void *process() {
       char *filePath = dest->path;
       printf("filePath: %s\n", filePath);
 
-      FILE *fp = fopen(filePath, "r");
-      fseek(fp, 0L, SEEK_END);
-      size_t size = ftell(fp);
-      fclose(fp);
-      int opened_fd = open(filePath, O_RDONLY);
+      /*FILE *fp = fopen(filePath, "r");*/
+      /*fseek(fp, 0L, SEEK_END);*/
+      /*size_t size = ftell(fp);*/
+      /*fclose(fp);*/
 
       char *header;
-      res.fd = &opened_fd;
+      res.filePath = filePath;
       res.body = header;
       res.contentType = fileType;
-      dest->values->GET(&req, &res);
+      if (dest->values->GET)
+        dest->values->GET(&req, &res);
       if (res.contentType)
         fileType = res.contentType;
 
@@ -285,36 +335,8 @@ void *process() {
           (res.body != NULL)
               ? res.body
               : headerBuilder(fileType, (res.statusCode == 404), template, 128);
-      int on = 1;
-      int off = 0;
-      off_t offset = 0;
-      ssize_t sent_bytes = 0;
-      // setsockopt(client, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on));
-      setsockopt(client, IPPROTO_TCP, TCP_CORK, &on, sizeof(on));
 
-      // printf("header Size %ld\nFile size, string %ld %d\n", strlen(header),
-      //        size, get_file_size(opened_fd));
-
-      send(client, header, strlen(header), 0);
-
-      // send(client, loadFileToString(filePath), size, 0);
-      while (offset < size) {
-        ssize_t current_bytes =
-            sendfile(client, opened_fd, &offset, size - offset);
-        if (current_bytes <= 0) {
-          perror("sendfile error");
-          exit(EXIT_FAILURE);
-          break;
-        }
-        sent_bytes += current_bytes;
-      }
-      printf("Offset Sent, Size: %ld, %ld, %ld\n", offset, sent_bytes, size);
-      if (sent_bytes < size)
-        perror("Incomplete sendfile transmission");
-      setsockopt(client, IPPROTO_TCP, TCP_CORK, &off, sizeof(off));
-      // setsockopt(client, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on));
-      //   sendfile(client, opened_fd, 0, size);
-      close(opened_fd);
+      SendResponse(client, filePath, res.contentType, res.statusCode, header);
       close(client);
     } else if (strcmp(method, "POST") == 0) {
     }
