@@ -30,4 +30,5 @@ add structs to the key value stuff in the b-tree. route: struct Route
 - methods return an int based on weather it was successful or not
 - add static things to functions so they cant be used in other header files
 - for the methods problem do an enum
+- be careful about memory between threads, as stuff can just disappear
 */

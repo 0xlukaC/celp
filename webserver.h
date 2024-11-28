@@ -247,7 +247,7 @@ void *process() {
 
     // maybe make on heap
     Request req = {method, urlRoute, fileType, param, query};
-    Response res = {1};
+    Response res;
 
     /* GET */
     if (strcmp(method, "GET") == 0) {
@@ -264,7 +264,10 @@ void *process() {
       fclose(fp);
       int opened_fd = open(filePath, O_RDONLY);
 
+      char *header;
       res.fd = &opened_fd;
+      res.body = header;
+      res.contentType = fileType;
       dest->values->GET(&req, &res);
       if (res.contentType)
         fileType = res.contentType;
@@ -278,7 +281,7 @@ void *process() {
       }
 
       char template[128];
-      char *header =
+      header =
           (res.body != NULL)
               ? res.body
               : headerBuilder(fileType, (res.statusCode == 404), template, 128);
