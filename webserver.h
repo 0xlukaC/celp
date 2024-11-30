@@ -1,5 +1,6 @@
 #ifndef WEBSERVER_H
 #define WEBSERVER_H
+#include <assert.h>
 #include <dirent.h>
 #include <fcntl.h>
 #include <netinet/in.h>
@@ -14,12 +15,15 @@
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
+#define set404(x) page404 = x
+char *page404 = NULL;
+const char *errorPage = "<html><body>404 Not Found 2</body></html>";
 
 typedef struct res_ {
-  int statusCode;
   char *contentType;
   char *body;
   char *filePath;
+  int statusCode;
 } Response;
 
 typedef struct req_ {
@@ -36,15 +40,17 @@ typedef struct Values_ {
   // char *path;
 } Values;
 
+typedef enum { GET, POST } Method;
+
 struct Route {
   char *key;
   char *path;
-  Values *values;
+  Values *values; // on heap
 
   struct Route *left, *right;
 };
 
-// WARNING: Dont confuse "root" with "route"
+// WARNING: Don't confuse "root" with "route"
 struct Route *root = NULL; // NOTE: this is the head of the b tree
 
 struct Route *initRoute(char *key, char *path, Values *value) {
@@ -82,13 +88,6 @@ struct Route *addRouteWorker(struct Route *head, char *key, char *path,
   return NULL; // unused
 }
 
-// this was done to exclude having to add the root param every time
-struct Route *addRoute(char *key, char *path, Values *values) {
-  if (path == NULL)
-    path = key;
-  return addRouteWorker(root, key, path, values);
-}
-
 struct Route *search(struct Route *head, char *key) {
   if (head == NULL) {
     return NULL;
@@ -103,6 +102,59 @@ struct Route *search(struct Route *head, char *key) {
   }
   printf("not returning anything");
   return NULL;
+}
+
+void toHeap(char **key, char **path) {
+  char *tempKey = malloc(strlen(*key) + 1);
+  strcpy(tempKey, *key);
+  *key = tempKey;
+  char *tempPath = malloc(strlen(*path) + 1);
+  strcpy(tempPath, *path);
+  *path = tempPath;
+}
+
+struct Route *checkDuplicates(char *key, Values *values) {
+  if (root && values) {
+    struct Route *temp = search(root, key);
+    if (temp) {
+      free(temp->values);
+      temp->values = values;
+    }
+    return temp;
+  }
+  return NULL;
+}
+
+struct Route *addRouteM(char *key, char *path, Values *values) {
+  if (path == NULL)
+    path = key;
+  toHeap(&key, &path);
+
+  struct Route *temp = checkDuplicates(key, values);
+  if (temp)
+    return temp;
+  return addRouteWorker(root, key, path, values);
+}
+
+// this was done to exclude having to add the root param every time
+struct Route *addRoute(char *key, char *path,
+                       void (*func)(Request *, Response *), Method meth) {
+  if (path == NULL)
+    path = key;
+  toHeap(&key, &path);
+
+  Values *values = malloc(sizeof(Values));
+  values->GET = NULL;
+  values->POST = NULL;
+  if (meth == GET) {
+    values->GET = func;
+  } else if (meth == POST) {
+    values->POST = func;
+  }
+  struct Route *temp = checkDuplicates(key, values);
+  if (temp)
+    return temp;
+  return addRouteWorker(root, key, path, values);
 }
 
 void freeRoutes(struct Route *head) {
@@ -131,17 +183,6 @@ char *mimes(char *ext) {
   printf("\n missed mimes"); 
   return "text/plain";
   // clang-format on
-}
-
-char *headerBuilder(char *ext, int b404, char *header, int size) {
-  if (b404 == 1) {
-    snprintf(header, size,
-             "HTTP/1.1 404 Not Found\r\nContent-Type: text/html\r\n\r\n");
-  } else {
-    snprintf(header, size, "HTTP/1.1 200 OK\r\nContent-Type: %s\r\n\r\n",
-             mimes(ext));
-  }
-  return header;
 }
 
 void staticFiles(const char *dirPath) {
@@ -183,6 +224,17 @@ void staticFiles(const char *dirPath) {
 //   return buffer;
 // }
 
+char *headerBuilder(char *ext, int b404, char *header, int size) {
+  if (b404 == 1) {
+    snprintf(header, size,
+             "HTTP/1.1 404 Not Found\r\nContent-Type: text/html\r\n\r\n");
+  } else {
+    snprintf(header, size, "HTTP/1.1 200 OK\r\nContent-Type: %s\r\n\r\n",
+             mimes(ext));
+  }
+  return header;
+}
+
 void SendResponse(int client, const char *filePath, char *fileType,
                   int statusCode, char *header) {
   int heap = 0;
@@ -190,7 +242,17 @@ void SendResponse(int client, const char *filePath, char *fileType,
     header = malloc(sizeof(char) * 128);
     heap = 1;
   }
-  header = headerBuilder(fileType, statusCode, header, 128);
+  // header = headerBuilder(fileType, statusCode, header, 128);
+  if (page404 && !filePath)
+    filePath = page404;
+
+  if (!filePath) {
+    send(client, header, strlen(header), 0);
+    send(client, errorPage, strlen(errorPage), 0);
+    printf("\n-----404!-----\n");
+    close(client);
+    return;
+  }
 
   FILE *fp = fopen(filePath, "r");
   fseek(fp, 0L, SEEK_END);
@@ -236,7 +298,6 @@ void SendResponse(int client, const char *filePath, char *fileType,
 void *process() {
   // char header[64] = "HTTP/1.1 200 OK\r\n\n";
   // char header404[128] = "HTTP/1.1 404 Not Found\r\n\r\n";
-  const char *errorPage = "<html><body>404 Not Found 2</body></html>";
   char header404[256];
   snprintf(header404, sizeof(header404),
            "HTTP/1.1 404 Not Found\r\n"
@@ -265,6 +326,8 @@ void *process() {
 
   while (1) {
     int client = accept(server_socket, NULL, NULL);
+    if (!client)
+      continue;
 
     char buffer[512] = {0};
     recv(client, buffer, 256, 0);
@@ -297,7 +360,7 @@ void *process() {
 
     // maybe make on heap
     Request req = {method, urlRoute, fileType, param, query};
-    Response res;
+    Response res = {fileType};
 
     /* GET */
     if (strcmp(method, "GET") == 0) {
@@ -305,30 +368,19 @@ void *process() {
       if (dest == NULL)
         res.statusCode = 404;
 
-      char *filePath = dest->path;
-      printf("filePath: %s\n", filePath);
-
-      /*FILE *fp = fopen(filePath, "r");*/
-      /*fseek(fp, 0L, SEEK_END);*/
-      /*size_t size = ftell(fp);*/
-      /*fclose(fp);*/
-
+      char *filePath;
       char *header;
-      res.filePath = filePath;
       res.body = header;
-      res.contentType = fileType;
-      if (dest->values->GET)
+      // res.filePath = filePath;
+
+      if (dest && dest->values && dest->values->GET)
         dest->values->GET(&req, &res);
       if (res.contentType)
         fileType = res.contentType;
 
-      if (res.statusCode == 404) {
-        send(client, header404, strlen(header404), 0);
-        send(client, errorPage, strlen(errorPage), 0);
-        printf("\n-----404!-----\n");
-        close(client);
-        continue;
-      }
+      if (res.statusCode != 404)
+        filePath = dest->path;
+      // printf("filePath: %s\n", filePath);
 
       char template[128];
       header =
