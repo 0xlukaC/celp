@@ -22,7 +22,10 @@ const char *errorPage = "<html><body>404 Not Found 2</body></html>";
 typedef struct res_ {
   char *contentType;
   char *body;
-  char *filePath;
+  union Content {
+    char *filePath;
+    char *data;
+  } content;
   int statusCode;
 } Response;
 
@@ -180,7 +183,7 @@ char *mimes(char *ext) {
     if (strcmp(ext, "txt") == 0) return "text/plain"; 
     if (strcmp(ext, "gif") == 0) return "image/gif"; 
     if (strcmp(ext, "png") == 0) return "image/png"; 
-  printf("\n missed mimes"); 
+  printf("\nmissed mimes"); 
   return "text/plain";
   // clang-format on
 }
@@ -235,14 +238,33 @@ char *headerBuilder(char *ext, int b404, char *header, int size) {
   return header;
 }
 
-void SendResponse(int client, const char *filePath, char *fileType,
-                  int statusCode, char *header) {
+void SendData(int client, char *data, char *contentType, int statusCode,
+              char *header, size_t *size) {
+  int heap = 0;
+
+  if (header == NULL) {
+    header = malloc(sizeof(char) * 128);
+    headerBuilder(contentType, statusCode, header, 128);
+    heap = 1;
+  }
+  send(client, header, strlen(header), 0);
+
+  if (data)
+    send(client, data, *size, 0);
+
+  if (heap)
+    free(header);
+}
+
+// dont confuse with sendfile() also its pointed to in Request
+void SendFile(int client, const char *filePath, char *fileType, int statusCode,
+              char *header) {
   int heap = 0;
   if (header == NULL) {
     header = malloc(sizeof(char) * 128);
+    headerBuilder(fileType, statusCode, header, 128);
     heap = 1;
   }
-  // header = headerBuilder(fileType, statusCode, header, 128);
   if (page404 && !filePath)
     filePath = page404;
 
@@ -365,20 +387,26 @@ void *process() {
     /* GET */
     if (strcmp(method, "GET") == 0) {
       struct Route *dest = search(root, urlRoute);
+      res.statusCode = 200;
       if (dest == NULL)
         res.statusCode = 404;
-
-      char *filePath;
-      char *header;
+      // ensuring no memory leaks
+      char *filePath = NULL;
+      char *data = NULL;
+      char *header = NULL;
       res.body = header;
-      // res.filePath = filePath;
+      res.content.filePath = filePath;
+      res.content.data = data;
 
       if (dest && dest->values && dest->values->GET)
-        dest->values->GET(&req, &res);
-      if (res.contentType)
-        fileType = res.contentType;
+        dest->values->GET(&req, &res); // function from other thread
+      data = res.content.data;
 
-      if (res.statusCode != 404)
+      if (res.contentType)
+        fileType = res.contentType; // declared up
+      // try to remove later
+
+      if (res.statusCode != 404 && dest != NULL)
         filePath = dest->path;
       // printf("filePath: %s\n", filePath);
 
@@ -387,8 +415,12 @@ void *process() {
           (res.body != NULL)
               ? res.body
               : headerBuilder(fileType, (res.statusCode == 404), template, 128);
-
-      SendResponse(client, filePath, res.contentType, res.statusCode, header);
+      if (!data)
+        SendFile(client, filePath, res.contentType, res.statusCode, header);
+      else {
+        size_t size = strlen(data) * sizeof(char); // check if valid
+        SendData(client, data, res.contentType, res.statusCode, header, &size);
+      }
       close(client);
     } else if (strcmp(method, "POST") == 0) {
     }
