@@ -59,14 +59,19 @@ struct Route {
 struct Route *root = NULL; // NOTE: this is the head of the b tree
 
 struct Route *initRoute(char *key, char *path, Values *value) {
-  root = (struct Route *)malloc(sizeof(struct Route));
+  struct Route *newRoute = (struct Route *)malloc(sizeof(struct Route));
 
-  root->key = key;
-  root->path = path;
-  root->values = value;
+  newRoute->key = key;
+  newRoute->path = path;
+  newRoute->values = value;
 
-  root->left = root->right = NULL;
-  return root;
+  newRoute->left = newRoute->right = NULL;
+
+  if (root == NULL) {
+    root = newRoute;
+  }
+
+  return newRoute;
 }
 
 void inorder(struct Route *head) {
@@ -110,10 +115,13 @@ struct Route *search(struct Route *head, char *key) {
 }
 
 void toHeap(char **key, char **path) {
-  char *tempKey = malloc(strlen(*key) + 1);
-  strcpy(tempKey, *key);
-  *key = tempKey;
-  if (path) {
+  if (!key && !path) perror("\nkey and path are NULL\n");
+  if (key && *key) {
+    char *tempKey = malloc(strlen(*key) + 1);
+    strcpy(tempKey, *key);
+    *key = tempKey;
+  }
+  if (path && *path) {
     char *tempPath = malloc(strlen(*path) + 1);
     strcpy(tempPath, *path);
     *path = tempPath;
@@ -123,7 +131,7 @@ void toHeap(char **key, char **path) {
 struct Route *checkDuplicates(char *key, Values *values) {
   if (root && values) {
     struct Route *temp = search(root, key);
-    if (temp) {
+    if (temp != NULL) {
       free(temp->values);
       temp->values = values;
     }
@@ -233,7 +241,7 @@ void intermediateRegex(char *path, char *key, Values *values) {
     struct Route *temp = checkDuplicates(files[i], values);
     if (temp)
       continue;
-    toHeap(&key, NULL);
+    // toHeap(&key, NULL);
     addRouteWorker(root, key, strdup(files[i]), values);
   }
   for (int i = 0; files; i++) free(files[i]);
@@ -241,9 +249,14 @@ void intermediateRegex(char *path, char *key, Values *values) {
 }
 
 /* key is the request from the browser, path is the filepath */
-struct Route *addRouteM(char *key, char *path, Values *values) {
-  if (path == NULL)
-    path = key;
+struct Route *addRouteM(char *path, char *key, Values *values) {
+  toHeap(&key, &path);
+
+  if (path == NULL) {
+    path = strdup(key);
+     if (path[0] == '/')
+    memmove(path, path + 1, strlen(path));
+  }
   struct stat path_stat;
   stat(path, &path_stat);
   if (!S_ISREG(path_stat.st_mode)) {
@@ -252,17 +265,22 @@ struct Route *addRouteM(char *key, char *path, Values *values) {
     struct Route *temp = checkDuplicates(key, values);
     if (temp)
       return temp;
-    toHeap(&key, &path);
+    //toHeap(&key, &path);
     return addRouteWorker(root, key, path, values);
   }
   return NULL;
 }
 
 // this was done to exclude having to add the root param every time
-struct Route *addRoute(char *key, char *path,
+struct Route *addRoute(char *path, char *key,
                        void (*func)(Request *, Response *), Method meth) {
-  if (path == NULL)
-    path = key;
+  toHeap(&key, &path);
+
+  if (path == NULL) {
+    path = strdup(key);
+     if (path[0] == '/')
+    memmove(path, path + 1, strlen(path));
+  }
 
   Values *values = malloc(sizeof(Values));
   values->GET = NULL;
@@ -279,7 +297,7 @@ struct Route *addRoute(char *key, char *path,
   if (!S_ISREG(path_stat.st_mode)) {
     intermediateRegex(path, key, values);
   } else {
-    toHeap(&key, &path);
+    // toHeap(&key, &path);
     struct Route *temp = checkDuplicates(key, values);
     if (temp)
       return temp;

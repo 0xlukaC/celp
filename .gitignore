@@ -1,2 +1,3 @@
 compile_flags.txt
 exec
+.clang-format

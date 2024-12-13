@@ -1,5 +1,6 @@
 #include "webserver.h"
 #include <pthread.h>
+#include <stdio.h>
 
 void get(Request *req, Response *res) {
   printf("%dcode\n", res->statusCode);
@@ -10,11 +11,15 @@ void test() {
   Values *valuess = malloc(sizeof(Values));
   valuess->GET = get;
   // addRoute("/index.html", "./index.html", get, GET);
-  addRouteM("/", "./index.html", valuess);
-  addRoute("/public/assets/text.txt", "./public/assets/text.txt", get, GET);
+  // addRouteM("./index.html", "/", valuess);
+  //addRoute("./index.html", "/", NULL, GET);
+ struct Route* foo = addRouteM("./public/assets/text.txt", "/public/assets/text.txt", valuess);
+  addRouteM("./public/assets/picture", "/public/assets/picture", valuess);
+  printf("%s\n", foo->left->path);
 }
 /*addRoute("public/assets/text.txt", NULL ...)
  addRoute('public/assets/*, NULL ...') key: /public/assets/* */
+// cant do NULL key
 
 int main() {
   jumpStart();
