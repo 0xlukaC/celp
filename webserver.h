@@ -3,9 +3,11 @@
 #include <assert.h>
 #include <dirent.h>
 #include <fcntl.h>
+#include <libgen.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <pthread.h>
+#include <regex.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -53,7 +55,7 @@ struct Route {
   struct Route *left, *right;
 };
 
-// WARNING: Don't confuse "root" with "route"
+// WARNING: Do not confuse "root" with "route"
 struct Route *root = NULL; // NOTE: this is the head of the b tree
 
 struct Route *initRoute(char *key, char *path, Values *value) {
@@ -111,9 +113,11 @@ void toHeap(char **key, char **path) {
   char *tempKey = malloc(strlen(*key) + 1);
   strcpy(tempKey, *key);
   *key = tempKey;
-  char *tempPath = malloc(strlen(*path) + 1);
-  strcpy(tempPath, *path);
-  *path = tempPath;
+  if (path) {
+    char *tempPath = malloc(strlen(*path) + 1);
+    strcpy(tempPath, *path);
+    *path = tempPath;
+  }
 }
 
 struct Route *checkDuplicates(char *key, Values *values) {
@@ -128,15 +132,130 @@ struct Route *checkDuplicates(char *key, Values *values) {
   return NULL;
 }
 
+char **matchFiles(char *path) {
+  regex_t regex;
+  int allocatedSize = 10; // used to keep track of whether to realloc
+  char **charPointerArray = malloc(sizeof(char *) * allocatedSize);
+  char *pathPattern = "^(.*/)?[^/]*$";
+  regcomp(&regex, pathPattern, REG_EXTENDED);
+  regmatch_t matches[2]; // Match group 0 is the entire match, 1 for the first
+                         // capture group
+  if (regexec(&regex, path, 2, matches, 0) != 0) {
+    fprintf(stderr, "No match found\n");
+    regfree(&regex);
+    return NULL;
+  }
+
+  char *dirPath = malloc((matches[1].rm_eo - matches[1].rm_so + 1) *
+                         sizeof(char)); // nullter +1
+  snprintf(dirPath, matches[1].rm_eo - matches[1].rm_so + 1, "%.*s",
+           (int)(matches[1].rm_eo - matches[1].rm_so), path + matches[1].rm_so);
+
+  char *filePath =
+      malloc((matches[0].rm_eo - matches[1].rm_eo + 1) * sizeof(char));
+  snprintf(filePath, matches[0].rm_eo - matches[1].rm_eo + 1, "%.*s",
+           (int)(matches[0].rm_eo - matches[1].rm_eo), path + matches[1].rm_eo);
+
+  if (dirPath == NULL)
+    dirPath = "./";
+  DIR *dp = opendir(dirPath);
+  char *rp = realpath(dirPath, NULL); // absolute path of input dir
+
+  char *fullInputPath = malloc(strlen(rp) + strlen(filePath) + 1);
+  strcpy(fullInputPath, dirPath);
+  strcat(fullInputPath, filePath);
+
+  struct dirent *ep;
+  int i = 0;
+  while ((ep = readdir(dp)) != NULL) {
+    if (strcmp(ep->d_name, ".") == 0 || strcmp(ep->d_name, "..") == 0)
+      continue;
+
+    char ab[1024]; // path of current lookup
+    snprintf(ab, 1024, "%s%s", dirPath, ep->d_name);
+    char *ad = realpath(ab, NULL); // absolute path of current lookup
+
+    //    printf("\n%s - %s - %s - %s - %s - %s\n", rp, ab, ad, dirPath,
+    //          fullInputPath, filePath);
+
+    if (strcmp(ad, fullInputPath) == 0) {
+      charPointerArray[i] = strdup(ab); // changed from fullIP
+      i++;
+    } else {
+
+      struct stat path_stat;
+      stat(ab, &path_stat);
+      if (!S_ISREG(path_stat.st_mode)) {
+        char recursive[1024];
+        snprintf(recursive, 1024, "%s/%s", ab, filePath);
+        char **results = matchFiles(recursive);
+        if (results) {
+          for (int j = 0; results[j]; j++) {
+            if (i >= allocatedSize) {
+              allocatedSize *= 2;
+              charPointerArray =
+                  realloc(charPointerArray, sizeof(char *) * allocatedSize);
+            }
+            charPointerArray[i++] = results[j];
+          }
+        }
+        free(ad);
+        continue;
+      }
+
+      regex_t userRegex;
+      regcomp(&userRegex, fullInputPath, REG_EXTENDED);
+      if (regexec(&userRegex, ad, 0, NULL, 0) == 0) {
+        charPointerArray[i] = strdup(ab); // changed from ab
+        i++;
+      }
+      regfree((&userRegex));
+    }
+    if (i >= allocatedSize) {
+      allocatedSize *= 2;
+      charPointerArray =
+          realloc(charPointerArray, sizeof(char *) * allocatedSize);
+    }
+  }
+  closedir(dp);
+  free(filePath);
+  free(rp);
+  regfree(&regex);
+  free(dirPath);
+  charPointerArray[i] = NULL; // null terminate the array
+  charPointerArray = realloc(charPointerArray, sizeof(char *) * (i + 1));
+  return charPointerArray;
+}
+
+void intermediateRegex(char *path, char *key, Values *values) {
+  char **files = matchFiles(path);
+  for (int i = 0; files[i]; i++) {
+    struct Route *temp = checkDuplicates(files[i], values);
+    if (temp)
+      continue;
+    toHeap(&key, NULL);
+    addRouteWorker(root, key, strdup(files[i]), values);
+  }
+  for (int i = 0; files; i++) free(files[i]);
+  free(files);
+}
+
+/* key is the request from the browser, path is the filepath */
 struct Route *addRouteM(char *key, char *path, Values *values) {
   if (path == NULL)
     path = key;
-  toHeap(&key, &path);
-
-  struct Route *temp = checkDuplicates(key, values);
-  if (temp)
-    return temp;
-  return addRouteWorker(root, key, path, values);
+  struct stat path_stat;
+  stat(path, &path_stat);
+  if (!S_ISREG(path_stat.st_mode)) {
+    intermediateRegex(path, key, values);
+  } else {
+    struct Route *temp = checkDuplicates(key, values);
+    if (temp)
+      return temp;
+    toHeap(&key, &path);
+    return addRouteWorker(root, key, path, values);
+  }
+  return NULL;
 }
 
 // this was done to exclude having to add the root param every time
@@ -144,7 +263,6 @@ struct Route *addRoute(char *key, char *path,
                        void (*func)(Request *, Response *), Method meth) {
   if (path == NULL)
     path = key;
-  toHeap(&key, &path);
 
   Values *values = malloc(sizeof(Values));
   values->GET = NULL;
@@ -154,18 +272,28 @@ struct Route *addRoute(char *key, char *path,
   } else if (meth == POST) {
     values->POST = func;
   }
-  struct Route *temp = checkDuplicates(key, values);
-  if (temp)
-    return temp;
-  return addRouteWorker(root, key, path, values);
+
+  struct stat path_stat;
+  stat(path, &path_stat);
+  printf("%s\n", path);
+  if (!S_ISREG(path_stat.st_mode)) {
+    intermediateRegex(path, key, values);
+  } else {
+    toHeap(&key, &path);
+    struct Route *temp = checkDuplicates(key, values);
+    if (temp)
+      return temp;
+    return addRouteWorker(root, key, path, values);
+  }
+  return NULL;
 }
 
 void freeRoutes(struct Route *head) {
   if (head != NULL) {
     freeRoutes(head->left);
     freeRoutes(head->right);
-    // free(head->key);
-    // free(head->values);
+    free(head->key);
+    free(head->values);
     free(head);
   }
 }
