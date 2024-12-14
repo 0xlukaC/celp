@@ -95,7 +95,7 @@ struct Route *addRouteWorker(struct Route *head, char *key, char *path,
   } else {
     head->left = addRouteWorker(head->left, key, path, values);
   }
-  return NULL; // unused
+  return head;
 }
 
 struct Route *search(struct Route *head, char *key) {
@@ -164,8 +164,7 @@ char **matchFiles(char *path) {
   snprintf(filePath, matches[0].rm_eo - matches[1].rm_eo + 1, "%.*s",
            (int)(matches[0].rm_eo - matches[1].rm_eo), path + matches[1].rm_eo);
 
-  if (dirPath == NULL)
-    dirPath = "./";
+  if (dirPath == NULL) dirPath = "./";
   DIR *dp = opendir(dirPath);
   char *rp = realpath(dirPath, NULL); // absolute path of input dir
 
@@ -176,8 +175,7 @@ char **matchFiles(char *path) {
   struct dirent *ep;
   int i = 0;
   while ((ep = readdir(dp)) != NULL) {
-    if (strcmp(ep->d_name, ".") == 0 || strcmp(ep->d_name, "..") == 0)
-      continue;
+    if (strcmp(ep->d_name, ".") == 0 || strcmp(ep->d_name, "..") == 0) continue;
 
     char ab[1024]; // path of current lookup
     snprintf(ab, 1024, "%s%s", dirPath, ep->d_name);
@@ -239,8 +237,7 @@ void intermediateRegex(char *path, char *key, Values *values) {
   char **files = matchFiles(path);
   for (int i = 0; files[i]; i++) {
     struct Route *temp = checkDuplicates(files[i], values);
-    if (temp)
-      continue;
+    if (temp) continue;
     // toHeap(&key, NULL);
     addRouteWorker(root, key, strdup(files[i]), values);
   }
@@ -254,8 +251,7 @@ struct Route *addRouteM(char *path, char *key, Values *values) {
 
   if (path == NULL) {
     path = strdup(key);
-     if (path[0] == '/')
-    memmove(path, path + 1, strlen(path));
+    if (path[0] == '/') memmove(path, path + 1, strlen(path));
   }
   struct stat path_stat;
   stat(path, &path_stat);
@@ -263,9 +259,8 @@ struct Route *addRouteM(char *path, char *key, Values *values) {
     intermediateRegex(path, key, values);
   } else {
     struct Route *temp = checkDuplicates(key, values);
-    if (temp)
-      return temp;
-    //toHeap(&key, &path);
+    if (temp) return temp;
+    // toHeap(&key, &path);
     return addRouteWorker(root, key, path, values);
   }
   return NULL;
@@ -278,8 +273,7 @@ struct Route *addRoute(char *path, char *key,
 
   if (path == NULL) {
     path = strdup(key);
-     if (path[0] == '/')
-    memmove(path, path + 1, strlen(path));
+    if (path[0] == '/') memmove(path, path + 1, strlen(path));
   }
 
   Values *values = malloc(sizeof(Values));
@@ -299,8 +293,7 @@ struct Route *addRoute(char *path, char *key,
   } else {
     // toHeap(&key, &path);
     struct Route *temp = checkDuplicates(key, values);
-    if (temp)
-      return temp;
+    if (temp) return temp;
     return addRouteWorker(root, key, path, values);
   }
   return NULL;
@@ -340,8 +333,7 @@ void staticFiles(const char *dirPath) {
   if (dp != NULL) {
     while ((ep = readdir(dp)) != NULL) {
       char *alt = ep->d_name;
-      if (strstr(ep->d_name, "index.html") != NULL)
-        alt = "/";
+      if (strstr(ep->d_name, "index.html") != NULL) alt = "/";
       addRouteWorker(root, ep->d_name, alt, NULL); // global
     }
     (void)closedir(dp);
@@ -395,11 +387,9 @@ void SendData(int client, char *data, char *contentType, int statusCode,
   }
   send(client, header, strlen(header), 0);
 
-  if (data)
-    send(client, data, *size, 0);
+  if (data) send(client, data, *size, 0);
 
-  if (heap)
-    free(header);
+  if (heap) free(header);
 }
 
 // dont confuse with sendfile() also its pointed to in Request
@@ -411,8 +401,7 @@ void SendFile(int client, const char *filePath, char *fileType, int statusCode,
     headerBuilder(fileType, statusCode, header, 128);
     heap = 1;
   }
-  if (page404 && !filePath)
-    filePath = page404;
+  if (page404 && !filePath) filePath = page404;
 
   if (!filePath) {
     send(client, header, strlen(header), 0);
@@ -452,15 +441,13 @@ void SendFile(int client, const char *filePath, char *fileType, int statusCode,
     sent_bytes += current_bytes;
   }
   printf("Offset Sent, Size: %ld, %ld, %ld\n", offset, sent_bytes, size);
-  if (sent_bytes < size)
-    perror("Incomplete sendfile transmission");
+  if (sent_bytes < size) perror("Incomplete sendfile transmission");
   setsockopt(client, IPPROTO_TCP, TCP_CORK, &off, sizeof(off));
   // setsockopt(client, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on));
   //   sendfile(client, opened_fd, 0, size);
   close(opened_fd);
   // close(client);
-  if (heap)
-    free(header);
+  if (heap) free(header);
 }
 
 void *process() {
@@ -494,8 +481,7 @@ void *process() {
 
   while (1) {
     int client = accept(server_socket, NULL, NULL);
-    if (!client)
-      continue;
+    if (!client) continue;
 
     char buffer[512] = {0};
     recv(client, buffer, 256, 0);
@@ -521,8 +507,7 @@ void *process() {
       // get popularity, whats after the = and before its next space
     }
 
-    if (strcmp(urlRoute, "/") == 0)
-      fileType = "html";
+    if (strcmp(urlRoute, "/") == 0) fileType = "html";
     printf("\nMethod + Route + Type + Param + Query:%s.%s.%s.%s.%s.\n", method,
            urlRoute, fileType, param, query);
 
@@ -534,8 +519,7 @@ void *process() {
     if (strcmp(method, "GET") == 0) {
       struct Route *dest = search(root, urlRoute);
       res.statusCode = 200;
-      if (dest == NULL)
-        res.statusCode = 404;
+      if (dest == NULL) res.statusCode = 404;
       // ensuring no memory leaks
       char *filePath = NULL;
       char *data = NULL;
@@ -548,12 +532,10 @@ void *process() {
         dest->values->GET(&req, &res); // function from other thread
       data = res.content.data;
 
-      if (res.contentType)
-        fileType = res.contentType; // declared up
+      if (res.contentType) fileType = res.contentType; // declared up
       // try to remove later
 
-      if (res.statusCode != 404 && dest != NULL)
-        filePath = dest->path;
+      if (res.statusCode != 404 && dest != NULL) filePath = dest->path;
       // printf("filePath: %s\n", filePath);
 
       char template[128];
