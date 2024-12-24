@@ -22,11 +22,9 @@ void test() {
   Values *thang = malloc(sizeof(Values));
   thang->GET = hawk2;
   addRoute("/", "./index.html", NULL, GET);
-  addStaticFiles("./public/assets");
-  // addRouteM("/", "./index.html", thang);
-  // addRouteM("/", "./index.html", thang);
-  // addRouteM("/public/assets/*", NULL, valuess);
-  // addRouteM("./public/assets/picture", "/public/assets/picture", valuess);
+  // addStaticFiles("./public/assets");
+  //  addRouteM("/", "./index.html", thang);
+  addRouteM("/public/assets/*", NULL, valuess);
 }
 // if you want to use regex, path has to be NULL
 

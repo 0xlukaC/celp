@@ -8,6 +8,7 @@
 #include <netinet/tcp.h>
 #include <pthread.h>
 #include <regex.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,7 +21,7 @@
 #include <unistd.h>
 #define set404(x) page404 = x
 char *page404 = NULL;
-const char *errorPage = "<html><body>404 Not Found 2</body></html>";
+const char *errorPage = "<html><body>404 Not Found</body></html>";
 
 typedef struct res_ {
   char *contentType;
@@ -460,13 +461,21 @@ void staticFiles(const char *dirPath) {
 //   return buffer;
 // }
 
-char *headerBuilder(char *ext, int b404, char *header, int size) {
+char *headerBuilder(char *ext, int b404, char *header, int size,
+                    size_t fileSize) {
   if (b404 == 1) {
     snprintf(header, size,
-             "HTTP/1.1 404 Not Found\r\nContent-Type: text/html\r\n\r\n");
+             "HTTP/1.1 404 Not Found\r\n"
+             "Content-Type: text/html\r\n"
+             "Content-Length: %zu\r\n\r\n",
+             fileSize);
   } else {
-    snprintf(header, size, "HTTP/1.1 200 OK\r\nContent-Type: %s\r\n\r\n",
-             mimes(ext));
+    snprintf(header, size,
+             "HTTP/1.1 200 OK\r\n"
+             "Content-Type: %s\r\n"
+             "Content-Length: %zu\r\n"
+             "Connection close\r\n\r\n",
+             mimes(ext), fileSize);
   }
   return header;
 }
@@ -477,7 +486,7 @@ void SendData(int client, char *data, char *contentType, int statusCode,
 
   if (header == NULL) {
     header = malloc(sizeof(char) * 128);
-    headerBuilder(contentType, statusCode, header, 128);
+    headerBuilder(contentType, statusCode, header, 128, *size);
     heap = 1;
   }
   send(client, header, strlen(header), 0);
@@ -489,11 +498,11 @@ void SendData(int client, char *data, char *contentType, int statusCode,
 
 // dont confuse with sendfile()
 void SendFile(int client, const char *filePath, char *fileType, int statusCode,
-              char *header) {
+              char *header, size_t size) {
   int heap = 0;
   if (header == NULL) {
     header = malloc(sizeof(char) * 128);
-    headerBuilder(fileType, statusCode, header, 128);
+    headerBuilder(fileType, statusCode, header, 128, size);
     heap = 1;
   }
   if (page404 && (!filePath || statusCode == 404)) filePath = page404;
@@ -505,11 +514,6 @@ void SendFile(int client, const char *filePath, char *fileType, int statusCode,
     close(client);
     return;
   }
-
-  FILE *fp = fopen(filePath, "r");
-  fseek(fp, 0L, SEEK_END);
-  size_t size = ftell(fp);
-  fclose(fp);
 
   int opened_fd = open(filePath, O_RDONLY);
 
@@ -634,14 +638,26 @@ void *process() {
         // res.content.filePath = NULL;
       }
 
-      char template[128];
-      char *header =
-          (res.body != NULL)
-              ? res.body
-              : headerBuilder(fileType, (res.statusCode == 404), template, 128);
+      size_t size;
+      if (res.content.filePath) {
+        FILE *fp = fopen(res.content.filePath, "r");
+        fseek(fp, 0L, SEEK_END);
+        size = ftell(fp);
+        fclose(fp);
+      } else if (page404)
+        size = strlen(page404);
+      else
+        size = strlen(errorPage);
+
+      printf("size: %ld\n", size);
+      char template[512];
+      char *header = (res.body != NULL)
+                         ? res.body
+                         : headerBuilder(fileType, (res.statusCode == 404),
+                                         template, 512, size);
       if (!res.content.data)
         SendFile(client, res.content.filePath, res.contentType, res.statusCode,
-                 header);
+                 header, size);
       else if (res.content.data) {
         size_t size = strlen(res.content.data) * sizeof(char); // check if valid
         SendData(client, res.content.data, res.contentType, res.statusCode,
