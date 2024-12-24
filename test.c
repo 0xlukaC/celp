@@ -3,23 +3,45 @@
 #include <stdio.h>
 
 void get(Request *req, Response *res) {
+  printf("currently in function 'get' \n");
   printf("%dcode\n", res->statusCode);
-  res->contentType = "txt";
+  // res->contentType = "txt";
+  char buffer[1024];
+  snprintf(buffer, sizeof(buffer), "./public/%s", req->path);
+  printf("buffer: %s\n", buffer);
+  res->content.filePath = strdup(buffer);
+  // res->content.filePath = "/daf//adf/";
 }
+
+void hawk2(Request *req, Response *res) {}
 
 void test() {
   Values *valuess = malloc(sizeof(Values));
   valuess->GET = get;
+
+  Values *thang = malloc(sizeof(Values));
+  thang->GET = hawk2;
   // addRoute("/index.html", "./index.html", get, GET);
-  // addRouteM("./index.html", "/", valuess);
-  //addRoute("./index.html", "/", NULL, GET);
- struct Route* foo = addRouteM("./public/assets/text.txt", "/public/assets/text.txt", valuess);
-  addRouteM("./public/assets/picture", "/public/assets/picture", valuess);
-  printf("%s\n", foo->left->path);
+  // addRouteM("/", "./index.html", thang);
+  addRouteM("/", "./index.html", thang);
+  addRouteM("/public/assets/*", NULL, valuess);
+  // addRouteM("./public/assets/picture", "/public/assets/picture", valuess);
 }
-/*addRoute("public/assets/text.txt", NULL ...)
- addRoute('public/assets/*, NULL ...') key: /public/assets/* */
-// cant do NULL key
+/*
+without regex:
+/cred/login, ./cred/login
+/cred/login, NULL :: matchfiles => ./cred/login "this can be done with file
+check"
+
+w/ regex:
+/cred/*, NULL :: matchfiles => no file until res is called, otherwise, throw
+error
+
+
+ /foo/bar = ./foo/bar
+
+ if you want to use regex, path has to be NULL
+ */
 
 int main() {
   jumpStart();
@@ -30,6 +52,14 @@ int main() {
   printf("this is never reached\n");
   return 0;
 }
+
+/*for (int i = 0; files[i]; i++) {*/
+/*  struct Route *temp = checkDuplicates(files[i], values);*/
+/*  if (temp) continue;*/
+/*  // toHeap(&key, NULL);*/
+/*  addRouteWorker(root, key, strdup(files[i]), values);*/
+/*}*/
+
 /*
 add structs to the key value stuff in the b-tree. route: struct Route
 
@@ -44,12 +74,15 @@ add structs to the key value stuff in the b-tree. route: struct Route
 - be careful about memory between threads, as stuff can just disappear
 - make res.Sendfile() so you dont have to call it yourself :)
 - header builder needs better support (eg. content-size);
-- pass port into jumpstart()
+- pass port/domain name (localhost:8000) into jumpstart()
 - can they put addRoutes in the header file w/ pointers to functions in the c?
 - check for issues (like chatgpt checks) especially on user input
 - check adding normal text as there may be problems since they're still passing
   path param
 - does not work if only do addRoute for a thing like /public/assets/*", NULL"
+- needs to have cosnt in res I thinks
+- is checkDuplicates neccesary?
+- I think you can use a switch statement to clean things up on the urlRequest
 https://stackoverflow.com/questions/34021194/ideas-for-implementing-wildcard-matching-in-c
 
 */
