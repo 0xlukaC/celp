@@ -56,9 +56,6 @@ struct Route {
   char *key;
   char *path;
   Values *values;
-  char **overlaps;
-  size_t overlapLen;
-
   struct Route *left, *right;
 };
 
@@ -71,8 +68,8 @@ struct Route *initRoute(char *key, char *path, Values *value) {
   newRoute->key = key;
   newRoute->path = path;
   newRoute->values = value;
-  newRoute->overlapLen = 0;
-  newRoute->overlaps = NULL;
+  /*newRoute->overlapLen = 0;*/
+  /*newRoute->overlaps = NULL;*/
 
   newRoute->left = newRoute->right = NULL;
 
@@ -356,6 +353,44 @@ struct Route *addRoute(char *key, char *path,
     return temp;
   }
   return addRouteWorker(root, key, path, values);
+}
+
+void staticGet(Request *req, Response *res) {
+  if (strcmp(req->urlRoute, "/") == 0) {
+    res->content.filePath = "./index.html";
+    return;
+  }
+
+  char buffer[1024];
+  snprintf(buffer, sizeof(buffer), ".%s/%s", req->baseUrl, req->path);
+  res->content.filePath = buffer;
+}
+
+void addStaticFiles(char *filepath) {
+  if (!filepath || strlen(filepath) == 0) {
+    fprintf(stderr, "Invalid filepath\n");
+    return;
+  }
+  struct stat pathStat;
+  stat(filepath, &pathStat);
+  if (!S_ISDIR(pathStat.st_mode)) {
+    fprintf(stderr, "Filepath is not a directory\n");
+    return;
+  }
+  // Strip leading './' or '../'
+  int length = 0;
+  while (filepath[length] == '.' || filepath[length] == '/') length++;
+
+  size_t refinedLen = strlen(filepath + length) + 3; // '/' + '*' '\0'
+  char *refinedPath = malloc(refinedLen + 2 - length);
+
+  refinedPath[0] = '/';
+  strcpy(refinedPath + 1, filepath + length);
+  if (filepath[refinedLen - 3] != '/') strcat(refinedPath, "/");
+  strcat(refinedPath, "*");
+  printf("refinedPath: %s\n", refinedPath);
+  addRoute(refinedPath, NULL, staticGet, GET);
+  free(refinedPath);
 }
 
 void freeRoutes(struct Route *head) {

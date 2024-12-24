@@ -21,27 +21,14 @@ void test() {
 
   Values *thang = malloc(sizeof(Values));
   thang->GET = hawk2;
-  // addRoute("/index.html", "./index.html", get, GET);
+  addRoute("/", "./index.html", NULL, GET);
+  addStaticFiles("./public/assets");
   // addRouteM("/", "./index.html", thang);
-  addRouteM("/", "./index.html", thang);
-  addRouteM("/public/assets/*", NULL, valuess);
+  // addRouteM("/", "./index.html", thang);
+  // addRouteM("/public/assets/*", NULL, valuess);
   // addRouteM("./public/assets/picture", "/public/assets/picture", valuess);
 }
-/*
-without regex:
-/cred/login, ./cred/login
-/cred/login, NULL :: matchfiles => ./cred/login "this can be done with file
-check"
-
-w/ regex:
-/cred/*, NULL :: matchfiles => no file until res is called, otherwise, throw
-error
-
-
- /foo/bar = ./foo/bar
-
- if you want to use regex, path has to be NULL
- */
+// if you want to use regex, path has to be NULL
 
 int main() {
   jumpStart();
@@ -66,8 +53,6 @@ add structs to the key value stuff in the b-tree. route: struct Route
 - addStaticFiles()
 - lru cache??
 - rename Values to Methods/funcs
-- add default get function to addstatic, readd fillFileinfo()
-- add wildcards * to addroute
 - add documentation \* *\ to the headerfile
 - methods return an int based on weather it was successful or not
 - add static things to functions so they cant be used in other header files
