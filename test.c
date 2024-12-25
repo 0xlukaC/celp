@@ -13,7 +13,7 @@ void get(Request *req, Response *res) {
   // res->content.filePath = "/daf//adf/";
 }
 
-void hawk2(Request *req, Response *res) {}
+void hawk2(Request *req, Response *res) { res->content.data = "yomp"; }
 
 void test() {
   Values *valuess = malloc(sizeof(Values));
@@ -22,9 +22,9 @@ void test() {
   Values *thang = malloc(sizeof(Values));
   thang->GET = hawk2;
   addRoute("/", "./index.html", NULL, GET);
+  addRoute("/public/assets/*", NULL, hawk2, GET);
   // addStaticFiles("./public/assets");
   //  addRouteM("/", "./index.html", thang);
-  addRouteM("/public/assets/*", NULL, valuess);
 }
 // if you want to use regex, path has to be NULL
 
@@ -62,9 +62,7 @@ add structs to the key value stuff in the b-tree. route: struct Route
 - check for issues (like chatgpt checks) especially on user input
 - check adding normal text as there may be problems since they're still passing
   path param
-- does not work if only do addRoute for a thing like /public/assets/*", NULL"
-- needs to have cosnt in res I thinks
-- is checkDuplicates neccesary?
+- needs to have cosnt in res I think
 - I think you can use a switch statement to clean things up on the urlRequest
 https://stackoverflow.com/questions/34021194/ideas-for-implementing-wildcard-matching-in-c
 

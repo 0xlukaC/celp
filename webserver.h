@@ -407,6 +407,7 @@ void freeRoutes(struct Route *head) {
 
 char *mimes(char *ext) {
   // clang-format off
+    if (ext == NULL) return "text/plain";
     if (strcmp(ext, "html") == 0 || strcmp(ext, "htm") == 0) return "text/html";
     if (strcmp(ext, "jpeg") == 0 || strcmp(ext, "jpg") == 0) return "image/jpg";
     if (strcmp(ext, "css") == 0) return "text/css";
@@ -418,7 +419,7 @@ char *mimes(char *ext) {
     if (strcmp(ext, "txt") == 0) return "text/plain"; 
     if (strcmp(ext, "gif") == 0) return "image/gif"; 
     if (strcmp(ext, "png") == 0) return "image/png"; 
-  printf("\nmissed mimes"); 
+  printf("missed mimes\n"); 
   return "text/plain";
   // clang-format on
 }
@@ -486,7 +487,7 @@ void SendData(int client, char *data, char *contentType, int statusCode,
 
   if (header == NULL) {
     header = malloc(sizeof(char) * 128);
-    headerBuilder(contentType, statusCode, header, 128, *size);
+    headerBuilder(contentType, (statusCode == 404), header, 128, *size);
     heap = 1;
   }
   send(client, header, strlen(header), 0);
@@ -498,12 +499,24 @@ void SendData(int client, char *data, char *contentType, int statusCode,
 
 // dont confuse with sendfile()
 void SendFile(int client, const char *filePath, char *fileType, int statusCode,
-              char *header, size_t size) {
+              char *header) {
+  size_t size;
   int heap = 0;
   if (header == NULL) {
-    header = malloc(sizeof(char) * 128);
-    headerBuilder(fileType, statusCode, header, 128, size);
+    if (filePath) {
+      FILE *fp = fopen(filePath, "r");
+      fseek(fp, 0L, SEEK_END);
+      size = ftell(fp);
+      fclose(fp);
+    } else if (page404) {
+      size = strlen(page404);
+    } else {
+      fileType = "text/html";
+      size = strlen(errorPage);
+    }
+    header = malloc(512);
     heap = 1;
+    headerBuilder(fileType, (statusCode == 404), header, 512, size);
   }
   if (page404 && (!filePath || statusCode == 404)) filePath = page404;
 
@@ -638,26 +651,10 @@ void *process() {
         // res.content.filePath = NULL;
       }
 
-      size_t size;
-      if (res.content.filePath) {
-        FILE *fp = fopen(res.content.filePath, "r");
-        fseek(fp, 0L, SEEK_END);
-        size = ftell(fp);
-        fclose(fp);
-      } else if (page404)
-        size = strlen(page404);
-      else
-        size = strlen(errorPage);
-
-      printf("size: %ld\n", size);
-      char template[512];
-      char *header = (res.body != NULL)
-                         ? res.body
-                         : headerBuilder(fileType, (res.statusCode == 404),
-                                         template, 512, size);
+      char *header = (res.body != NULL) ? res.body : NULL;
       if (!res.content.data)
         SendFile(client, res.content.filePath, res.contentType, res.statusCode,
-                 header, size);
+                 header);
       else if (res.content.data) {
         size_t size = strlen(res.content.data) * sizeof(char); // check if valid
         SendData(client, res.content.data, res.contentType, res.statusCode,
