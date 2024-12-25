@@ -481,22 +481,6 @@ char *headerBuilder(char *ext, int b404, char *header, int size,
   return header;
 }
 
-void SendData(int client, char *data, char *contentType, int statusCode,
-              char *header, size_t *size) {
-  int heap = 0;
-
-  if (header == NULL) {
-    header = malloc(sizeof(char) * 128);
-    headerBuilder(contentType, (statusCode == 404), header, 128, *size);
-    heap = 1;
-  }
-  send(client, header, strlen(header), 0);
-
-  if (data) send(client, data, *size, 0);
-
-  if (heap) free(header);
-}
-
 // dont confuse with sendfile()
 void SendFile(int client, const char *filePath, char *fileType, int statusCode,
               char *header) {
@@ -559,6 +543,25 @@ void SendFile(int client, const char *filePath, char *fileType, int statusCode,
   //   sendfile(client, opened_fd, 0, size);
   close(opened_fd);
   // close(client);
+  if (heap) free(header);
+}
+
+void SendData(int client, char *data, char *contentType, int statusCode,
+              char *header, size_t *size) {
+  int heap = 0;
+
+  if (header == NULL) {
+    header = malloc(sizeof(char) * 128);
+    headerBuilder(contentType, (statusCode == 404), header, 128, *size);
+    heap = 1;
+  }
+  if (statusCode == 404)
+    SendFile(client, NULL, NULL, 404, NULL);
+  else if (data) {
+    send(client, header, strlen(header), 0);
+    send(client, data, *size, 0);
+  }
+
   if (heap) free(header);
 }
 
@@ -656,7 +659,7 @@ void *process() {
         SendFile(client, res.content.filePath, res.contentType, res.statusCode,
                  header);
       else if (res.content.data) {
-        size_t size = strlen(res.content.data) * sizeof(char); // check if valid
+        size_t size = strlen(res.content.data); // check if valid
         SendData(client, res.content.data, res.contentType, res.statusCode,
                  header, &size);
       }
