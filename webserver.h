@@ -405,23 +405,36 @@ void freeRoutes(struct Route *head) {
   }
 }
 
-char *mimes(char *ext) {
-  // clang-format off
-    if (ext == NULL) return "text/plain";
-    if (strcmp(ext, "html") == 0 || strcmp(ext, "htm") == 0) return "text/html";
-    if (strcmp(ext, "jpeg") == 0 || strcmp(ext, "jpg") == 0) return "image/jpg";
-    if (strcmp(ext, "css") == 0) return "text/css";
-    if (strcmp(ext, "csv") == 0) return "text/plain";
-    if (strcmp(ext, "ttf") == 0) return "font/tts"; 
-    if (strcmp(ext, "ico") == 0) return "image/png"; 
-    if (strcmp(ext, "js") == 0) return "application/javascript";
-    if (strcmp(ext, "json") == 0) return "application/json"; 
-    if (strcmp(ext, "txt") == 0) return "text/plain"; 
-    if (strcmp(ext, "gif") == 0) return "image/gif"; 
-    if (strcmp(ext, "png") == 0) return "image/png"; 
-  printf("missed mimes\n"); 
+char *mimes(const char *input) {
+  if (input == NULL) return "text/plain";
+
+  static const struct {
+    const char *key, *mime;
+  } mime_map[] = {
+      {"html", "text/html"},
+      {"htm", "text/html"},
+      {"jpeg", "image/jpeg"},
+      {"jpg", "image/jpeg"},
+      {"css", "text/css"},
+      {"csv", "text/plain"},
+      {"ttf", "font/ttf"},
+      {"ico", "image/x-icon"},
+      {"js", "application/javascript"},
+      {"json", "application/json"},
+      {"txt", "text/plain"},
+      {"gif", "image/gif"},
+      {"png", "image/png"},
+      {"image/png", "image/png"},
+      {"image/jpg", "image/jpeg"},
+      {"image/gif", "image/gif"},
+      {"image/x-icon", "image/x-icon"},
+      {"application/json", "application/json"},
+  };
+  for (size_t i = 0; i < sizeof(mime_map) / sizeof(mime_map[0]); i++)
+    if (strcmp(input, mime_map[i].key) == 0) return (char *)mime_map[i].mime;
+
+  printf("missed mimes: %s\n", input);
   return "text/plain";
-  // clang-format on
 }
 
 void staticFiles(const char *dirPath) {
@@ -475,7 +488,7 @@ char *headerBuilder(char *ext, int b404, char *header, int size,
              "HTTP/1.1 200 OK\r\n"
              "Content-Type: %s\r\n"
              "Content-Length: %zu\r\n"
-             "Connection close\r\n\r\n",
+             "Connection: keep-alive\r\n\r\n",
              mimes(ext), fileSize);
   }
   return header;
@@ -498,6 +511,7 @@ void SendFile(int client, const char *filePath, char *fileType, int statusCode,
       fileType = "text/html";
       size = strlen(errorPage);
     }
+    printf("content: %s\n", fileType);
     header = malloc(512);
     heap = 1;
     headerBuilder(fileType, (statusCode == 404), header, 512, size);
@@ -537,7 +551,7 @@ void SendFile(int client, const char *filePath, char *fileType, int statusCode,
     sent_bytes += current_bytes;
   }
   printf("Offset Sent, Size: %ld, %ld, %ld\n", offset, sent_bytes, size);
-  if (sent_bytes < size) perror("Incomplete sendfile transmission");
+  if (sent_bytes < size) fprintf(strerr, "Incomplete sendfile transmission");
   setsockopt(client, IPPROTO_TCP, TCP_CORK, &off, sizeof(off));
   // setsockopt(client, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on));
   //   sendfile(client, opened_fd, 0, size);
@@ -549,7 +563,6 @@ void SendFile(int client, const char *filePath, char *fileType, int statusCode,
 void SendData(int client, char *data, char *contentType, int statusCode,
               char *header, size_t *size) {
   int heap = 0;
-
   if (header == NULL) {
     header = malloc(sizeof(char) * 128);
     headerBuilder(contentType, (statusCode == 404), header, 128, *size);
@@ -624,7 +637,7 @@ void *process() {
            urlRoute, fileType, param, query);
 
     Request req = {method, urlRoute, path, baseUrl, fileType, param, query};
-    Response res = {fileType};
+    Response res = {};
 
     /* GET */
     if (strcmp(method, "GET") == 0) {
@@ -644,8 +657,7 @@ void *process() {
         // continue;
         res.statusCode = 404;
       }
-      if (res.contentType) fileType = res.contentType; // declared above
-      // try to remove later
+      if (!res.contentType && fileType) res.contentType = fileType;
 
       struct stat file_stat;
       stat(res.content.filePath, &file_stat);
@@ -663,6 +675,7 @@ void *process() {
         SendData(client, res.content.data, res.contentType, res.statusCode,
                  header, &size);
       }
+      usleep(1000);
       close(client);
     } else if (strcmp(method, "POST") == 0) {
     }

@@ -15,6 +15,8 @@ void get(Request *req, Response *res) {
 
 void hawk2(Request *req, Response *res) { res->content.data = "yomp"; }
 
+void pic(Request *req, Response *res) { res->contentType = "image/jpg"; }
+
 void test() {
   Values *valuess = malloc(sizeof(Values));
   valuess->GET = get;
@@ -22,9 +24,11 @@ void test() {
   Values *thang = malloc(sizeof(Values));
   thang->GET = hawk2;
   addRoute("/", "./index.html", NULL, GET);
-  addRoute("/public/assets/*", NULL, hawk2, GET);
-  // addStaticFiles("./public/assets");
-  //  addRouteM("/", "./index.html", thang);
+  addRoute("/pic", "./public/pexels-wildlittlethingsphoto-1388069.jpg", pic,
+           GET);
+  // addRoute("/public/assets/*", NULL, hawk2, GET);
+  //  addStaticFiles("./public/assets");
+  //   addRouteM("/", "./index.html", thang);
 }
 // if you want to use regex, path has to be NULL
 
