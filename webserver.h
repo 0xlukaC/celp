@@ -2,6 +2,7 @@
 #define WEBSERVER_H
 #include <assert.h>
 #include <dirent.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <libgen.h>
 #include <netinet/in.h>
@@ -165,8 +166,8 @@ char **matchFiles(char *path) {
       struct stat path_stat;
       stat(ab, &path_stat);
       if (!S_ISREG(path_stat.st_mode)) {
-        char recursive[1024];
-        snprintf(recursive, 1024, "%s/%s", ab, filePath);
+        char recursive[2048];
+        snprintf(recursive, 2048, "%s/%s", ab, filePath);
         char **results = matchFiles(recursive);
         if (results) {
           for (int j = 0; results[j]; j++) {
@@ -541,17 +542,48 @@ void SendFile(int client, const char *filePath, char *fileType, int statusCode,
   send(client, header, strlen(header), 0);
 
   // send(client, loadFileToString(filePath), size, 0);
+
   while (offset < size) {
     ssize_t current_bytes = sendfile(client, opened_fd, &offset, size - offset);
     if (current_bytes <= 0) {
+
+      if (errno == EINVAL || errno == ENOSYS) {
+        // Fall back to read/write
+        fprintf(stderr,
+                "sendfile failed with errno %d, falling back to read/write\n",
+                errno);
+        char buffer[8192];
+        ssize_t read_bytes, write_bytes, written_total;
+        while ((read_bytes = read(opened_fd, buffer, sizeof(buffer))) > 0) {
+          written_total = 0;
+          while (written_total < read_bytes) {
+            write_bytes = write(client, buffer + written_total,
+                                read_bytes - written_total);
+            if (write_bytes < 0) {
+              perror("write error");
+              return;
+            }
+            written_total += write_bytes;
+          }
+        }
+        if (read_bytes < 0) {
+          perror("read error");
+        }
+        return;
+      }
+
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        continue;
+      }
       perror("sendfile error");
       exit(EXIT_FAILURE);
       break;
     }
     sent_bytes += current_bytes;
   }
+
   printf("Offset Sent, Size: %ld, %ld, %ld\n", offset, sent_bytes, size);
-  if (sent_bytes < size) fprintf(strerr, "Incomplete sendfile transmission");
+  if (sent_bytes < size) fprintf(stderr, "Incomplete sendfile transmission");
   setsockopt(client, IPPROTO_TCP, TCP_CORK, &off, sizeof(off));
   // setsockopt(client, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on));
   //   sendfile(client, opened_fd, 0, size);
