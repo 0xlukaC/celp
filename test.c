@@ -33,7 +33,7 @@ void test() {
 // if you want to use regex, path has to be NULL
 
 int main() {
-  jumpStart();
+  celp();
   printf("Hello, World!\n");
   test();
   inorder(root);
@@ -58,9 +58,9 @@ add structs to the key value stuff in the b-tree. route: struct Route
 - add documentation \* *\ to the headerfile
 - methods return an int based on weather it was successful or not
 - add static things to functions so they cant be used in other header files
+(please write list)
 - be careful about memory between threads, as stuff can just disappear
 - make res.Sendfile() so you dont have to call it yourself :)
-- header builder needs better support (eg. content-size);
 - pass port/domain name (localhost:8000) into jumpstart()
 - can they put addRoutes in the header file w/ pointers to functions in the c?
 - check for issues (like chatgpt checks) especially on user input
@@ -69,5 +69,7 @@ add structs to the key value stuff in the b-tree. route: struct Route
 - needs to have cosnt in res I think
 - I think you can use a switch statement to clean things up on the urlRequest
 https://stackoverflow.com/questions/34021194/ideas-for-implementing-wildcard-matching-in-c
-
+- So, we will clean up the code, leave out matchfiles, commit, then create a new
+branch for matchfiles
+- we need to make body a struct which holds parts of the body
 */

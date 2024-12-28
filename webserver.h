@@ -44,6 +44,8 @@ typedef struct req_ {
   char *fileType;
   char *param;
   char *query;
+
+  char *body;
 } Request;
 
 typedef struct Values_ {
@@ -255,7 +257,8 @@ struct Route *search(struct Route *head, char *key, int modify) {
   reti = regexec(&regex, key, 1, matches, 0);
   regfree(&regex);
 
-  if (!reti || (strcmp(key, head->key) == 0)) { // returns 0 on success
+  if (!reti ||
+      (strcmp(key, head->key) == 0)) { // returns 0 on success (both cases)
     return head;
   } else if (reti == REG_NOMATCH) {
     if (strcmp(key, head->key) > 0) {
@@ -270,7 +273,7 @@ struct Route *search(struct Route *head, char *key, int modify) {
 }
 
 void toHeap(char **key, char **path) {
-  if (!key && !path) perror("\nkey and path are NULL\n");
+  if (!key && !path) fprintf(stderr, "\nkey and path are NULL\n");
   if (key && *key) {
     char *tempKey = malloc(strlen(*key) + 1);
     strcpy(tempKey, *key);
@@ -295,19 +298,6 @@ struct Route *checkDuplicates(char *key, Values *values) {
   return NULL;
 }
 
-void intermediateRegex(char *path, char *key, Values *values) {
-  char **files = matchFiles(path);
-  printf("paths: %s\n", path);
-  for (int i = 0; files[i]; i++) {
-    struct Route *temp = checkDuplicates(files[i], values);
-    if (temp) continue;
-    // toHeap(&key, NULL);
-    addRouteWorker(root, key, strdup(files[i]), values);
-  }
-  for (int i = 0; files[i]; i++) free(files[i]);
-  free(files);
-}
-
 /* key is the request from the browser, path is the filepath */
 struct Route *addRouteM(char *key, char *path, Values *values) {
   if (key == NULL) fprintf(stderr, "No key for path: %s", path);
@@ -322,7 +312,7 @@ struct Route *addRouteM(char *key, char *path, Values *values) {
 
   struct Route *temp = checkDuplicates(key, values);
   if (temp) {
-    printf("There is dup!\n");
+    printf("There is a duplicate!\n");
     return temp;
   }
   return addRouteWorker(root, key, path, values);
@@ -438,43 +428,28 @@ char *mimes(const char *input) {
   return "text/plain";
 }
 
-void staticFiles(const char *dirPath) {
-  DIR *dp = opendir(dirPath);
-  struct dirent *ep;
-  if (dp != NULL) {
-    while ((ep = readdir(dp)) != NULL) {
-      char *alt = ep->d_name;
-      if (strstr(ep->d_name, "index.html") != NULL) alt = "/";
-      addRouteWorker(root, ep->d_name, alt, NULL); // global
+char *loadFileToString(const char *filePath) {
+  FILE *file = fopen(filePath, "rb");
+  if (!file) return NULL;
+
+  fseek(file, 0L, SEEK_END);
+  size_t size = ftell(file);
+  fseek(file, 0L, SEEK_SET);
+
+  char *buffer = malloc(size + 1);
+  if (buffer) {
+    size_t bytesRead = fread(buffer, 1, size, file);
+    if (bytesRead != size) {
+      free(buffer);
+      fclose(file);
+      return NULL;
     }
-    (void)closedir(dp);
-  } else
-    perror("Couldn't open the directory");
+    buffer[size] = '\0'; // Null-terminate the string
+  }
+
+  fclose(file);
+  return buffer;
 }
-
-// char *loadFileToString(const char *filePath) {
-//   FILE *file = fopen(filePath, "rb");
-//   if (!file)
-//     return NULL;
-
-//   fseek(file, 0L, SEEK_END);
-//   size_t size = ftell(file);
-//   fseek(file, 0L, SEEK_SET);
-
-//   char *buffer = malloc(size + 1);
-//   if (buffer) {
-//     size_t bytesRead = fread(buffer, 1, size, file);
-//     if (bytesRead != size) {
-//       free(buffer);
-//       fclose(file);
-//       return NULL;
-//     }
-//     buffer[size] = '\0'; // Null-terminate the string
-//   }
-
-//   fclose(file);
-//   return buffer;
-// }
 
 char *headerBuilder(char *ext, int b404, char *header, int size,
                     size_t fileSize) {
@@ -534,7 +509,7 @@ void SendFile(int client, const char *filePath, char *fileType, int statusCode,
   off_t offset = 0;
   ssize_t sent_bytes = 0;
   // setsockopt(client, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on));
-  setsockopt(client, IPPROTO_TCP, TCP_CORK, &on, sizeof(on));
+  setsockopt(client, IPPROTO_TCP, TCP_CORK, &on, 4);
 
   // printf("header Size %ld\nFile size, string %ld %d\n", strlen(header),
   //        size, get_file_size(opened_fd));
@@ -584,7 +559,7 @@ void SendFile(int client, const char *filePath, char *fileType, int statusCode,
 
   printf("Offset Sent, Size: %ld, %ld, %ld\n", offset, sent_bytes, size);
   if (sent_bytes < size) fprintf(stderr, "Incomplete sendfile transmission");
-  setsockopt(client, IPPROTO_TCP, TCP_CORK, &off, sizeof(off));
+  setsockopt(client, IPPROTO_TCP, TCP_CORK, &off, 4);
   // setsockopt(client, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on));
   //   sendfile(client, opened_fd, 0, size);
   close(opened_fd);
@@ -636,11 +611,15 @@ void *process() {
     int client = accept(server_socket, NULL, NULL);
     if (!client) continue;
 
-    char buffer[512] = {0};
-    recv(client, buffer, 256, 0);
+    char buffer[1024] = {0};
+    ssize_t receive = recv(client, buffer, 1024, 0);
+    if (errno || !receive) {
+      perror("\nError in recv\n");
+      continue;
+    }
 
     // GET /idk.html?search_query=popularity HTTP/1.1
-    char *clientHeader = strtok(buffer, "\n"); // automatically adds 0/
+    char *clientHeader = strtok(buffer, "\n");
 
     char *questionMark = strchr(clientHeader, '?');
     char *method = strtok(clientHeader, " ");
@@ -668,7 +647,15 @@ void *process() {
     printf("\nMethod + Route + Type + Param + Query:%s.%s.%s.%s.%s.\n", method,
            urlRoute, fileType, param, query);
 
-    Request req = {method, urlRoute, path, baseUrl, fileType, param, query};
+    char *body = NULL;
+    char *body_start = strstr(buffer, "\r\n\r\n");
+    if (body_start) {
+      body_start += 4;           // Skip past the \r\n\r\n
+      body = strdup(body_start); // Store the body in the variable
+    }
+
+    Request req = {method,   urlRoute, path,  baseUrl,
+                   fileType, param,    query, body};
     Response res = {};
 
     /* GET */
@@ -707,10 +694,37 @@ void *process() {
         SendData(client, res.content.data, res.contentType, res.statusCode,
                  header, &size);
       }
-      usleep(1000);
-      close(client);
+      // usleep(1000);
+
+      /* POST */
     } else if (strcmp(method, "POST") == 0) {
+      if (req.body) {
+
+        struct Route *dest = search(root, urlRoute, 0);
+        res.statusCode = 200;
+        if (dest == NULL) res.statusCode = 404;
+
+        if (dest && dest->values && dest->values->POST)
+          dest->values->POST(&req, &res); // Call the custom POST handler
+
+        if (!res.contentType && fileType) res.contentType = fileType;
+
+        if (res.content.data) {
+          size_t size = strlen(res.content.data);
+          SendData(client, res.content.data, res.contentType, res.statusCode,
+                   NULL, &size);
+        } else if (res.content.filePath) {
+          size_t size = strlen(res.content.filePath);
+          SendFile(client, res.content.filePath, res.contentType,
+                   res.statusCode, NULL, &size);
+        } else {
+          send(client, header404, strlen(header404), 0);
+          send(client, errorPage, strlen(errorPage), 0);
+        }
+      }
     }
+    if (body) free(body); // since its the only one on heap
+    close(client);
   }
   // untouched code
   freeRoutes(root);
@@ -728,7 +742,7 @@ void keepAlive() {
   // pthread_mutex_unlock(&exitMutex);
 }
 
-void jumpStart() {
+void celp() {
   pthread_t webserver;
   int status = pthread_create(&webserver, NULL, process, NULL);
   if (status != 0) {
