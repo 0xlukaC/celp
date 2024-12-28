@@ -21,9 +21,15 @@
 #include <time.h>
 #include <unistd.h>
 #define set404(x) page404 = x
+/* Specifies a 404 Page
+
+  If left undefined a default page will be used. */
 char *page404 = NULL;
 const char *errorPage = "<html><body>404 Not Found</body></html>";
 
+int port; // Port number eg. 3000
+
+/* Contains the Response data from the webserver. */
 typedef struct res_ {
   char *contentType;
   char *body;
@@ -34,20 +40,22 @@ typedef struct res_ {
   int statusCode;
 } Response;
 
+/* Contains the Request data from the webserver.*/
 typedef struct req_ {
-  char *method;
+  const char *method;
 
-  char *urlRoute;
-  char *path;
-  char *baseUrl;
+  const char *urlRoute;
+  const char *path;
+  const char *baseUrl;
 
-  char *fileType;
-  char *param;
-  char *query;
+  const char *fileType;
+  const char *param;
+  const char *query;
 
-  char *body;
+  const char *body;
 } Request;
 
+/* Holds user specified handler functions for each HTTP method.*/
 typedef struct Values_ {
   void (*GET)(Request *req, Response *res);  // Function pointer for GET
   void (*POST)(Request *req, Response *res); // Function pointer for POST
@@ -56,6 +64,10 @@ typedef struct Values_ {
 
 typedef enum { GET, POST } Method;
 
+/* Node for the binary tree
+
+  Maps a http request (char *key) to a filepath (char *path).
+  Key can be a Regex expression, however, path has to be NULL. */
 struct Route {
   char *key;
   char *path;
@@ -64,8 +76,12 @@ struct Route {
 };
 
 // WARNING: Do not confuse "root" with "route"
-struct Route *root = NULL; // NOTE: this is the head of the b tree
+struct Route *root = NULL; // This is the head of the binary tree
 
+/* Creates a node in the binary tree.
+
+ This returns a node and therefore does not decide where the node
+ will be in the b-tree, that is left to addRouteWorker */
 struct Route *initRoute(char *key, char *path, Values *value) {
   struct Route *newRoute = (struct Route *)malloc(sizeof(struct Route));
 
@@ -74,16 +90,15 @@ struct Route *initRoute(char *key, char *path, Values *value) {
   newRoute->values = value;
   /*newRoute->overlapLen = 0;*/
   /*newRoute->overlaps = NULL;*/
-
   newRoute->left = newRoute->right = NULL;
 
   if (root == NULL) {
     root = newRoute;
   }
-
   return newRoute;
 }
 
+/* Prints the contents (nodes and their respective data) of the b-tree.*/
 void inorder(struct Route *head) {
   if (head != NULL) {
     inorder(head->left);
@@ -92,6 +107,8 @@ void inorder(struct Route *head) {
   }
 }
 
+/* Recurses through the b-tree, comparing lexicographically, It will
+ * either find a duplicate or call initRoute to create a node*/
 struct Route *addRouteWorker(struct Route *head, char *key, char *path,
                              Values *values) {
   if (head == NULL) {
@@ -108,6 +125,8 @@ struct Route *addRouteWorker(struct Route *head, char *key, char *path,
   return head;
 }
 
+/* Takes a file path or a Regex expression and returns a list of files (strings)
+ */
 char **matchFiles(char *path) {
   if (path == NULL) {
     perror("Input (char *path) to matchFiles is NULL");
@@ -209,9 +228,8 @@ char **matchFiles(char *path) {
   return charPointerArray;
 }
 
-/*
- * multiple string replacement
- */
+/*Multiple string replacement.
+  Used to replace non POSIX regex symbols.*/
 char *sanitse(const char *regexStr) {
   const char *symbols = "*";
   const char *replacer = ".*";
@@ -238,6 +256,8 @@ char *sanitse(const char *regexStr) {
   return sanitised;
 }
 
+/* Searches the b-tree for a filepath or a Regex expression.
+   Note: this will return the first match.*/
 struct Route *search(struct Route *head, char *key, int modify) {
   if (head == NULL) return NULL;
   char *sanitisedPattern = sanitse(head->key);
@@ -272,6 +292,7 @@ struct Route *search(struct Route *head, char *key, int modify) {
   }
 }
 
+/* Places user input on the heap since its from another thread.*/
 void toHeap(char **key, char **path) {
   if (!key && !path) fprintf(stderr, "\nkey and path are NULL\n");
   if (key && *key) {
@@ -286,6 +307,7 @@ void toHeap(char **key, char **path) {
   }
 }
 
+/* If there is a duplicate, it wil replace its Values with the new Values.*/
 struct Route *checkDuplicates(char *key, Values *values) {
   if (root && values) {
     struct Route *temp = search(root, key, 1);
@@ -298,7 +320,9 @@ struct Route *checkDuplicates(char *key, Values *values) {
   return NULL;
 }
 
-/* key is the request from the browser, path is the filepath */
+/* Adds a http request with multiple methods/functions to be called (see
+ * examples).
+ * Key is the request from the browser, path is the filepath.*/
 struct Route *addRouteM(char *key, char *path, Values *values) {
   if (key == NULL) fprintf(stderr, "No key for path: %s", path);
   toHeap(&key, &path);
@@ -318,7 +342,7 @@ struct Route *addRouteM(char *key, char *path, Values *values) {
   return addRouteWorker(root, key, path, values);
 }
 
-// this was done to exclude having to add the root param every time
+/* Adds a http request with one method (see examples).*/
 struct Route *addRoute(char *key, char *path,
                        void (*func)(Request *, Response *), Method meth) {
   if (key == NULL) fprintf(stderr, "No key for path: %s", path);
@@ -358,6 +382,7 @@ void staticGet(Request *req, Response *res) {
   res->content.filePath = buffer;
 }
 
+/* Takes a directory path and adds it to the b-tree using Regex.*/
 void addStaticFiles(char *filepath) {
   if (!filepath || strlen(filepath) == 0) {
     fprintf(stderr, "Invalid filepath\n");
@@ -396,6 +421,9 @@ void freeRoutes(struct Route *head) {
   }
 }
 
+/* Gets the mime type.
+ * Input can be "text/plain" or "txt".
+ * Note: an input such as text/plain will return text/plain.*/
 char *mimes(const char *input) {
   if (input == NULL) return "text/plain";
 
@@ -428,6 +456,7 @@ char *mimes(const char *input) {
   return "text/plain";
 }
 
+/* Loads content of a file to a string.*/
 char *loadFileToString(const char *filePath) {
   FILE *file = fopen(filePath, "rb");
   if (!file) return NULL;
@@ -451,6 +480,7 @@ char *loadFileToString(const char *filePath) {
   return buffer;
 }
 
+/* Constructs a header.*/
 char *headerBuilder(char *ext, int b404, char *header, int size,
                     size_t fileSize) {
   if (b404 == 1) {
@@ -470,7 +500,9 @@ char *headerBuilder(char *ext, int b404, char *header, int size,
   return header;
 }
 
-// dont confuse with sendfile()
+/* Sends a file to the browser.
+ * Header may be NULL
+ * Do not confuse with sendfile().*/
 void SendFile(int client, const char *filePath, char *fileType, int statusCode,
               char *header) {
   size_t size;
@@ -567,6 +599,7 @@ void SendFile(int client, const char *filePath, char *fileType, int statusCode,
   if (heap) free(header);
 }
 
+/* Sends data instead of a file to the browser.*/
 void SendData(int client, char *data, char *contentType, int statusCode,
               char *header, size_t *size) {
   int heap = 0;
@@ -585,6 +618,9 @@ void SendData(int client, char *data, char *contentType, int statusCode,
   if (heap) free(header);
 }
 
+/* listens for client connections, processes their requests,
+ * and sends appropriate responses based on the request method.
+ * Note: Runs the infinite loop.*/
 void *process() {
   char header404[256];
   snprintf(header404, sizeof(header404),
@@ -600,7 +636,7 @@ void *process() {
   // struct sockaddr_in addr = {AF_INET, htons(8001), INADDR_ANY};
   struct sockaddr_in addr;
   addr.sin_family = AF_INET;
-  addr.sin_port = htons(8001);
+  addr.sin_port = htons(port);
   addr.sin_addr.s_addr = INADDR_ANY;
   int bound = bind(server_socket, (struct sockaddr *)&addr, sizeof(addr));
   // variable not used
@@ -613,7 +649,7 @@ void *process() {
 
     char buffer[1024] = {0};
     ssize_t receive = recv(client, buffer, 1024, 0);
-    if (errno || !receive) {
+    if (errno) {
       perror("\nError in recv\n");
       continue;
     }
@@ -716,7 +752,7 @@ void *process() {
         } else if (res.content.filePath) {
           size_t size = strlen(res.content.filePath);
           SendFile(client, res.content.filePath, res.contentType,
-                   res.statusCode, NULL, &size);
+                   res.statusCode, NULL);
         } else {
           send(client, header404, strlen(header404), 0);
           send(client, errorPage, strlen(errorPage), 0);
@@ -736,13 +772,18 @@ void *process() {
 pthread_cond_t exitCond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t exitMutex = PTHREAD_MUTEX_INITIALIZER;
 
+/* Allows the thread to not close. This function will block everything after it
+
+   (recommended to keep at end of stack). */
 void keepAlive() {
   // pthread_mutex_lock(&exitMutex);
   pthread_cond_wait(&exitCond, &exitMutex);
   // pthread_mutex_unlock(&exitMutex);
 }
 
-void celp() {
+/* Starts the Webserver */
+void celp(int portNum) {
+  port = portNum;
   pthread_t webserver;
   int status = pthread_create(&webserver, NULL, process, NULL);
   if (status != 0) {
@@ -752,6 +793,7 @@ void celp() {
   pthread_detach(webserver);
 }
 
+/* Stops the webserver */
 void stop() {
   pthread_cond_signal(&exitCond);
   pthread_mutex_lock(&exitMutex);

@@ -33,7 +33,7 @@ void test() {
 // if you want to use regex, path has to be NULL
 
 int main() {
-  celp();
+  celp(8001);
   printf("Hello, World!\n");
   test();
   inorder(root);
