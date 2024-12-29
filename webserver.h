@@ -32,7 +32,7 @@ int port; // Port number eg. 3000
 /* Contains the Response data from the webserver. */
 typedef struct res_ {
   char *contentType;
-  char *body;
+  char *body; // header
   struct Content {
     char *filePath;
     char *data;
@@ -529,8 +529,8 @@ void *process() {
     int client = accept(server_socket, NULL, NULL);
     if (client < 0) continue;
 
-    char buffer[1024] = {0};
-    recv(client, buffer, 1024, 0);
+    char buffer[512] = {0};
+    recv(client, buffer, 512, 0);
 
     // GET /example.html?search_query=popularity HTTP/1.1
     char *clientHeader = strtok(buffer, "\n");
@@ -598,6 +598,8 @@ void *process() {
         res.statusCode = 404;
       }
 
+      if (res.content.data && !res.content.filePath) res.statusCode = 200;
+
       char *header = (res.body != NULL) ? res.body : NULL;
       if (!res.content.data)
         SendFile(client, res.content.filePath, res.contentType, res.statusCode,
@@ -618,6 +620,8 @@ void *process() {
 
         if (dest && dest->values && dest->values->POST)
           dest->values->POST(&req, &res); // Call the custom POST handler
+
+        if (res.content.data && !res.content.filePath) res.statusCode = 200;
 
         if (!res.contentType && fileType) res.contentType = fileType;
 
