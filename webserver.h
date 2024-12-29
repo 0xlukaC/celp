@@ -59,7 +59,6 @@ typedef struct req_ {
 typedef struct Values_ {
   void (*GET)(Request *req, Response *res);  // Function pointer for GET
   void (*POST)(Request *req, Response *res); // Function pointer for POST
-  // char *path;
 } Values;
 
 typedef enum { GET, POST } Method;
@@ -81,6 +80,7 @@ struct Route *root = NULL; // This is the head of the binary tree
 /* Creates a node in the binary tree.
 
  This returns a node and therefore does not decide where the node
+
  will be in the b-tree, that is left to addRouteWorker */
 struct Route *initRoute(char *key, char *path, Values *value) {
   struct Route *newRoute = (struct Route *)malloc(sizeof(struct Route));
@@ -88,8 +88,6 @@ struct Route *initRoute(char *key, char *path, Values *value) {
   newRoute->key = key;
   newRoute->path = path;
   newRoute->values = value;
-  /*newRoute->overlapLen = 0;*/
-  /*newRoute->overlaps = NULL;*/
   newRoute->left = newRoute->right = NULL;
 
   if (root == NULL) {
@@ -107,8 +105,8 @@ void inorder(struct Route *head) {
   }
 }
 
-/* Recurses through the b-tree, comparing lexicographically, It will
- * either find a duplicate or call initRoute to create a node*/
+/* Recurses through the b-tree, comparing lexicographically,
+   It will either find a duplicate or call initRoute to create a node.*/
 struct Route *addRouteWorker(struct Route *head, char *key, char *path,
                              Values *values) {
   if (head == NULL) {
@@ -123,109 +121,6 @@ struct Route *addRouteWorker(struct Route *head, char *key, char *path,
     head->left = addRouteWorker(head->left, key, path, values);
   }
   return head;
-}
-
-/* Takes a file path or a Regex expression and returns a list of files (strings)
- */
-char **matchFiles(char *path) {
-  if (path == NULL) {
-    perror("Input (char *path) to matchFiles is NULL");
-    return NULL;
-  }
-  regex_t regex;
-  int allocatedSize = 10; // used to keep track of whether to realloc
-  char **charPointerArray = malloc(sizeof(char *) * allocatedSize);
-  char *pathPattern = "^([^/].*/)?([^/]+)$"; // may be janky
-  regcomp(&regex, pathPattern, REG_EXTENDED);
-  regmatch_t matches[2]; // Match group 0 is the entire match, 1 for the first
-                         // capture group
-  if (regexec(&regex, path, 2, matches, 0) != 0) {
-    fprintf(stderr, "No file match found\n");
-    regfree(&regex);
-    return NULL;
-  }
-
-  char *dirPath = malloc((matches[1].rm_eo - matches[1].rm_so + 1) *
-                         sizeof(char)); // nullter +1
-  snprintf(dirPath, matches[1].rm_eo - matches[1].rm_so + 1, "%.*s",
-           (int)(matches[1].rm_eo - matches[1].rm_so), path + matches[1].rm_so);
-
-  char *filePath =
-      malloc((matches[0].rm_eo - matches[1].rm_eo + 1) * sizeof(char));
-  snprintf(filePath, matches[0].rm_eo - matches[1].rm_eo + 1, "%.*s",
-           (int)(matches[0].rm_eo - matches[1].rm_eo), path + matches[1].rm_eo);
-
-  if (dirPath[0] == '\0' || filePath[0] == '\0') {
-    fprintf(stderr, "(webserver.h) couldnt match path: %s\n", path);
-    return NULL;
-  }
-
-  DIR *dp = opendir(dirPath);
-  char *rp = realpath(dirPath, NULL); // absolute path of input dir
-
-  char *fullInputPath = malloc(strlen(rp) + strlen(filePath) + 1);
-  strcpy(fullInputPath, dirPath);
-  strcat(fullInputPath, filePath);
-
-  struct dirent *ep;
-  int i = 0;
-  while ((ep = readdir(dp)) != NULL) {
-    if (strcmp(ep->d_name, ".") == 0 || strcmp(ep->d_name, "..") == 0) continue;
-
-    char ab[1024]; // path of current lookup
-    snprintf(ab, 1024, "%s%s", dirPath, ep->d_name);
-    char *ad = realpath(ab, NULL); // absolute path of current lookup
-
-    //    printf("\n%s - %s - %s - %s - %s - %s\n", rp, ab, ad, dirPath,
-    //          fullInputPath, filePath);
-
-    if (strcmp(ad, fullInputPath) == 0) {
-      charPointerArray[i] = strdup(ab); // changed from fullIP
-      i++;
-    } else {
-
-      struct stat path_stat;
-      stat(ab, &path_stat);
-      if (!S_ISREG(path_stat.st_mode)) {
-        char recursive[2048];
-        snprintf(recursive, 2048, "%s/%s", ab, filePath);
-        char **results = matchFiles(recursive);
-        if (results) {
-          for (int j = 0; results[j]; j++) {
-            if (i >= allocatedSize) {
-              allocatedSize *= 2;
-              charPointerArray =
-                  realloc(charPointerArray, sizeof(char *) * allocatedSize);
-            }
-            charPointerArray[i++] = results[j];
-          }
-        }
-        free(ad);
-        continue;
-      }
-
-      regex_t userRegex;
-      regcomp(&userRegex, fullInputPath, REG_EXTENDED);
-      if (regexec(&userRegex, ad, 0, NULL, 0) == 0) {
-        charPointerArray[i] = strdup(ab); // changed from ab
-        i++;
-      }
-      regfree((&userRegex));
-    }
-    if (i >= allocatedSize) {
-      allocatedSize *= 2;
-      charPointerArray =
-          realloc(charPointerArray, sizeof(char *) * allocatedSize);
-    }
-  }
-  closedir(dp);
-  free(filePath);
-  free(rp);
-  regfree(&regex);
-  free(dirPath);
-  charPointerArray[i] = NULL; // null terminate the array
-  charPointerArray = realloc(charPointerArray, sizeof(char *) * (i + 1));
-  return charPointerArray;
 }
 
 /*Multiple string replacement.
@@ -262,7 +157,6 @@ struct Route *search(struct Route *head, char *key, int modify) {
   if (head == NULL) return NULL;
   char *sanitisedPattern = sanitse(head->key);
   regex_t regex;
-  // int reti = regcomp(&regex, head->key, 0);
   char anchoredKey[strlen(sanitisedPattern) + 3];
   snprintf(anchoredKey, sizeof(anchoredKey), "^%s$", sanitisedPattern);
 
@@ -271,7 +165,7 @@ struct Route *search(struct Route *head, char *key, int modify) {
     fprintf(stderr, "Could not compile regex\n");
     return NULL;
   }
-  // printf("patterns %s, %s, %s\n", anchoredKey, key, head->key);
+
   free(sanitisedPattern);
   regmatch_t matches[1];
   reti = regexec(&regex, key, 1, matches, 0);
@@ -336,7 +230,7 @@ struct Route *addRouteM(char *key, char *path, Values *values) {
 
   struct Route *temp = checkDuplicates(key, values);
   if (temp) {
-    printf("There is a duplicate!\n");
+    printf("There is a duplicate path!\n");
     return temp;
   }
   return addRouteWorker(root, key, path, values);
@@ -365,7 +259,7 @@ struct Route *addRoute(char *key, char *path,
 
   struct Route *temp = checkDuplicates(key, values);
   if (temp) {
-    printf("There is dup!\n");
+    printf("There is a duplicate path!\n");
     return temp;
   }
   return addRouteWorker(root, key, path, values);
@@ -405,7 +299,6 @@ void addStaticFiles(char *filepath) {
   strcpy(refinedPath + 1, filepath + length);
   if (filepath[refinedLen - 3] != '/') strcat(refinedPath, "/");
   strcat(refinedPath, "*");
-  printf("refinedPath: %s\n", refinedPath);
   addRoute(refinedPath, NULL, staticGet, GET);
   free(refinedPath);
 }
@@ -452,7 +345,6 @@ char *mimes(const char *input) {
   for (size_t i = 0; i < sizeof(mime_map) / sizeof(mime_map[0]); i++)
     if (strcmp(input, mime_map[i].key) == 0) return (char *)mime_map[i].mime;
 
-  printf("missed mimes: %s\n", input);
   return "text/plain";
 }
 
@@ -473,7 +365,7 @@ char *loadFileToString(const char *filePath) {
       fclose(file);
       return NULL;
     }
-    buffer[size] = '\0'; // Null-terminate the string
+    buffer[size] = '\0';
   }
 
   fclose(file);
@@ -519,7 +411,6 @@ void SendFile(int client, const char *filePath, char *fileType, int statusCode,
       fileType = "text/html";
       size = strlen(errorPage);
     }
-    printf("content: %s\n", fileType);
     header = malloc(512);
     heap = 1;
     headerBuilder(fileType, (statusCode == 404), header, 512, size);
@@ -529,7 +420,6 @@ void SendFile(int client, const char *filePath, char *fileType, int statusCode,
   if (!filePath || statusCode == 404) {
     send(client, header, strlen(header), 0);
     send(client, errorPage, strlen(errorPage), 0);
-    printf("-----404!-----\n");
     close(client);
     return;
   }
@@ -542,9 +432,6 @@ void SendFile(int client, const char *filePath, char *fileType, int statusCode,
   ssize_t sent_bytes = 0;
   // setsockopt(client, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on));
   setsockopt(client, IPPROTO_TCP, TCP_CORK, &on, 4);
-
-  // printf("header Size %ld\nFile size, string %ld %d\n", strlen(header),
-  //        size, get_file_size(opened_fd));
 
   send(client, header, strlen(header), 0);
 
@@ -589,13 +476,11 @@ void SendFile(int client, const char *filePath, char *fileType, int statusCode,
     sent_bytes += current_bytes;
   }
 
-  printf("Offset Sent, Size: %ld, %ld, %ld\n", offset, sent_bytes, size);
+  // printf("Offset Sent, Size: %ld, %ld, %ld\n", offset, sent_bytes, size);
   if (sent_bytes < size) fprintf(stderr, "Incomplete sendfile transmission");
   setsockopt(client, IPPROTO_TCP, TCP_CORK, &off, 4);
   // setsockopt(client, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on));
-  //   sendfile(client, opened_fd, 0, size);
   close(opened_fd);
-  // close(client);
   if (heap) free(header);
 }
 
@@ -632,29 +517,22 @@ void *process() {
 
   int server_socket = socket(AF_INET, SOCK_STREAM, 0);
 
-  // define the address
-  // struct sockaddr_in addr = {AF_INET, htons(8001), INADDR_ANY};
   struct sockaddr_in addr;
   addr.sin_family = AF_INET;
   addr.sin_port = htons(port);
   addr.sin_addr.s_addr = INADDR_ANY;
   int bound = bind(server_socket, (struct sockaddr *)&addr, sizeof(addr));
-  // variable not used
 
   listen(server_socket, 15);
 
   while (1) {
     int client = accept(server_socket, NULL, NULL);
-    if (!client) continue;
+    if (client < 0) continue;
 
     char buffer[1024] = {0};
-    ssize_t receive = recv(client, buffer, 1024, 0);
-    if (errno) {
-      perror("\nError in recv\n");
-      continue;
-    }
+    recv(client, buffer, 1024, 0);
 
-    // GET /idk.html?search_query=popularity HTTP/1.1
+    // GET /example.html?search_query=popularity HTTP/1.1
     char *clientHeader = strtok(buffer, "\n");
 
     char *questionMark = strchr(clientHeader, '?');
@@ -679,9 +557,11 @@ void *process() {
     char *path = NULL;
     if (baseUrl) path = strtok(NULL, "");
 
-    if (strcmp(urlRoute, "/") == 0) fileType = "html"; //???
-    printf("\nMethod + Route + Type + Param + Query:%s.%s.%s.%s.%s.\n", method,
-           urlRoute, fileType, param, query);
+    if (strcmp(urlRoute, "/") == 0)
+      fileType = "html"; // This will be text/plain otherwise
+    /*printf("\nMethod + Route + Type + Param + Query:%s.%s.%s.%s.%s.\n",
+     * method,*/
+    /*       urlRoute, fileType, param, query);*/
 
     char *body = NULL;
     char *body_start = strstr(buffer, "\r\n\r\n");
@@ -706,10 +586,8 @@ void *process() {
       if (res.statusCode != 404 && dest && !res.content.filePath)
         res.content.filePath = dest->path;
 
-      // printf("key: %s\n", dest->key);
       if (!res.content.data && !res.content.filePath) {
         fprintf(stderr, "No filepath provided anywhere for %s\n", req.urlRoute);
-        // continue;
         res.statusCode = 404;
       }
       if (!res.contentType && fileType) res.contentType = fileType;
@@ -718,7 +596,6 @@ void *process() {
       stat(res.content.filePath, &file_stat);
       if (!S_ISREG((file_stat.st_mode))) {
         res.statusCode = 404;
-        // res.content.filePath = NULL;
       }
 
       char *header = (res.body != NULL) ? res.body : NULL;
@@ -726,11 +603,10 @@ void *process() {
         SendFile(client, res.content.filePath, res.contentType, res.statusCode,
                  header);
       else if (res.content.data) {
-        size_t size = strlen(res.content.data); // check if valid
+        size_t size = strlen(res.content.data);
         SendData(client, res.content.data, res.contentType, res.statusCode,
                  header, &size);
       }
-      // usleep(1000);
 
       /* POST */
     } else if (strcmp(method, "POST") == 0) {
