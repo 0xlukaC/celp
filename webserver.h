@@ -217,8 +217,15 @@ struct Route *checkDuplicates(char *key, Values *values) {
 /* Adds a http request with multiple methods/functions to be called (see
  * examples).
  * Key is the request from the browser, path is the filepath.*/
-struct Route *addRouteM(char *key, char *path, Values *values) {
-  if (key == NULL) fprintf(stderr, "No key for path: %s", path);
+struct Route *addRouteM(char *key, char *path, Values *uvalues) {
+  if (key == NULL) {
+    if (path) fprintf(stderr, "No key for path: %s", path);
+    return NULL;
+  }
+  /*Values *values = malloc(sizeof(Values));*/
+  /*values->GET = uvalues->GET;*/
+  /*values->POST = uvalues->POST;*/
+
   toHeap(&key, &path);
 
   if (!path) { // if key (minus "/") is a file, make it = path
@@ -228,21 +235,24 @@ struct Route *addRouteM(char *key, char *path, Values *values) {
     }
   }
 
-  struct Route *temp = checkDuplicates(key, values);
+  struct Route *temp = checkDuplicates(key, uvalues);
   if (temp) {
     printf("There is a duplicate path!\n");
     return temp;
   }
-  return addRouteWorker(root, key, path, values);
+  return addRouteWorker(root, key, path, uvalues);
 }
 
 /* Adds a http request with one method (see examples).*/
 struct Route *addRoute(char *key, char *path,
                        void (*func)(Request *, Response *), Method meth) {
-  if (key == NULL) fprintf(stderr, "No key for path: %s", path);
+  if (key == NULL) {
+    if (path) fprintf(stderr, "No key for path: %s", path);
+    return NULL;
+  }
   toHeap(&key, &path);
 
-  if (!path) { // if key (minus "/") is a file, make it = path
+  if (path == NULL) { // if key (minus "/") is a file, make it = path
     struct stat path_stat;
     if (stat(key + 1, &path_stat) == 0 && !S_ISREG(path_stat.st_mode)) {
       path = strdup(key + 1);
@@ -399,6 +409,19 @@ void SendFile(int client, const char *filePath, char *fileType, int statusCode,
               char *header) {
   size_t size;
   int heap = 0;
+
+  if (!fileType && filePath) {
+    char *temp = strdup(filePath);
+    char *ext = strrchr(temp, '.');
+    if (!ext || *(ext + 1) == '\0')
+      fileType = "text/plain";
+    else
+      fileType = mimes(ext + 1);
+
+    free(temp);
+  } else if (!fileType)
+    fileType = "text/plain";
+
   if (header == NULL) {
     if (filePath) {
       FILE *fp = fopen(filePath, "r");
@@ -487,6 +510,8 @@ void SendFile(int client, const char *filePath, char *fileType, int statusCode,
 /* Sends data instead of a file to the browser.*/
 void SendData(int client, char *data, char *contentType, int statusCode,
               char *header, size_t *size) {
+  if (!contentType) contentType = "text/plain";
+
   int heap = 0;
   if (header == NULL) {
     header = malloc(sizeof(char) * 128);
@@ -517,21 +542,35 @@ void *process() {
 
   int server_socket = socket(AF_INET, SOCK_STREAM, 0);
 
+  int opt = 1;
+  setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+  // allows Ctrl+c of the webserver
+
   struct sockaddr_in addr;
   addr.sin_family = AF_INET;
   addr.sin_port = htons(port);
   addr.sin_addr.s_addr = INADDR_ANY;
-  int bound = bind(server_socket, (struct sockaddr *)&addr, sizeof(addr));
 
-  listen(server_socket, 15);
+  int bound = bind(server_socket, (struct sockaddr *)&addr, sizeof(addr));
+  if (bound < 0) {
+    perror("Bind failed");
+  }
+
+  listen(server_socket, 1);
 
   while (1) {
     int client = accept(server_socket, NULL, NULL);
+    printf("client%d\n", client);
     if (client < 0) continue;
 
-    char buffer[512] = {0};
-    recv(client, buffer, 512, 0);
-
+    char buffer[1024] = {0};
+    int received = recv(client, buffer, 1024 - 1, 0);
+    if (received <= 0) {
+      close(client);
+      continue; // Skip if no data or error
+    }
+    buffer[received] = '\0';
+    printf("%s", buffer);
     // GET /example.html?search_query=popularity HTTP/1.1
     char *clientHeader = strtok(buffer, "\n");
 
@@ -590,7 +629,6 @@ void *process() {
         fprintf(stderr, "No filepath provided anywhere for %s\n", req.urlRoute);
         res.statusCode = 404;
       }
-      if (!res.contentType && fileType) res.contentType = fileType;
 
       struct stat file_stat;
       stat(res.content.filePath, &file_stat);
@@ -612,31 +650,27 @@ void *process() {
 
       /* POST */
     } else if (strcmp(method, "POST") == 0) {
-      if (req.body) {
+      printf("in post\n");
+      struct Route *dest = search(root, urlRoute, 0);
+      res.statusCode = 200;
+      if (dest == NULL) res.statusCode = 404;
 
-        struct Route *dest = search(root, urlRoute, 0);
-        res.statusCode = 200;
-        if (dest == NULL) res.statusCode = 404;
+      if (dest && dest->values && dest->values->POST)
+        dest->values->POST(&req, &res); // Call the custom POST handler
 
-        if (dest && dest->values && dest->values->POST)
-          dest->values->POST(&req, &res); // Call the custom POST handler
+      if (res.content.data && !res.content.filePath) res.statusCode = 200;
 
-        if (res.content.data && !res.content.filePath) res.statusCode = 200;
-
-        if (!res.contentType && fileType) res.contentType = fileType;
-
-        if (res.content.data) {
-          size_t size = strlen(res.content.data);
-          SendData(client, res.content.data, res.contentType, res.statusCode,
-                   NULL, &size);
-        } else if (res.content.filePath) {
-          size_t size = strlen(res.content.filePath);
-          SendFile(client, res.content.filePath, res.contentType,
-                   res.statusCode, NULL);
-        } else {
-          send(client, header404, strlen(header404), 0);
-          send(client, errorPage, strlen(errorPage), 0);
-        }
+      if (res.content.data) {
+        size_t size = strlen(res.content.data);
+        SendData(client, res.content.data, res.contentType, res.statusCode,
+                 NULL, &size);
+      } else if (res.content.filePath) {
+        size_t size = strlen(res.content.filePath);
+        SendFile(client, res.content.filePath, res.contentType, res.statusCode,
+                 NULL);
+      } else {
+        send(client, header404, strlen(header404), 0);
+        send(client, errorPage, strlen(errorPage), 0);
       }
     }
     if (body) free(body); // since its the only one on heap
