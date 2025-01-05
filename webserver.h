@@ -74,8 +74,17 @@ struct Route {
   struct Route *left, *right;
 };
 
+/* A linked list which has its nodes in the order they were added
+ * by the user. Used as a fallback for regex routes. Contains
+ * pointers to the properties of struct Route */
+struct LinkedRoute {
+  struct Route *route;
+  struct LinkedRoute *next;
+};
+
 // WARNING: Do not confuse "root" with "route"
 struct Route *root = NULL; // This is the head of the binary tree
+struct LinkedRoute *linkedRoot = NULL;
 
 /* @private
  * Creates a node in the binary tree.
@@ -83,14 +92,25 @@ struct Route *root = NULL; // This is the head of the binary tree
  * will be in the b-tree, that is left to addRouteWorker */
 struct Route *initRoute(char *key, char *path, Values *value) {
   struct Route *newRoute = (struct Route *)malloc(sizeof(struct Route));
+  struct LinkedRoute *newLinked = malloc(sizeof(struct LinkedRoute));
 
   newRoute->key = key;
   newRoute->path = path;
   newRoute->values = value;
   newRoute->left = newRoute->right = NULL;
 
-  if (root == NULL) {
-    root = newRoute;
+  newLinked->route = newRoute;
+
+  if (root == NULL) root = newRoute;
+
+  if (linkedRoot == NULL) {
+    linkedRoot = newLinked;
+  } else {
+    struct LinkedRoute *head = linkedRoot;
+    while (head->next != NULL) {
+      head = head->next;
+    }
+    head->next = newLinked;
   }
   return newRoute;
 }
@@ -151,39 +171,45 @@ char *sanitse(const char *regexStr) {
   return sanitised;
 }
 
+/* is the fallback for search. treats entries as regex expressions*/
+struct Route *searchLink(char *key) {
+
+  struct LinkedRoute *linkedHead = linkedRoot;
+  while (linkedHead != NULL) {
+
+    char *sanitisedPattern = sanitse(linkedHead->route->key);
+    regex_t regex;
+    char anchoredKey[strlen(sanitisedPattern) + 3];
+    snprintf(anchoredKey, sizeof(anchoredKey), "^%s$", sanitisedPattern);
+
+    int reti = regcomp(&regex, anchoredKey, REG_EXTENDED);
+    if (reti) {
+      fprintf(stderr, "Could not compile regex\n");
+      return NULL;
+    }
+    free(sanitisedPattern);
+    regmatch_t matches[1];
+    reti = regexec(&regex, key, 1, matches, 0);
+    regfree(&regex);
+
+    if (!reti) return linkedHead->route; // returns 0 on success
+    linkedHead = linkedHead->next;
+  }
+  return NULL;
+}
+
 /* @private Searches the b-tree for a filepath or a Regex expression.
    Note: this will return the first match.*/
-struct Route *search(struct Route *head, char *key, int modify) {
+struct Route *search(struct Route *head, char *key) {
   if (head == NULL) return NULL;
-  char *sanitisedPattern = sanitse(head->key);
-  regex_t regex;
-  char anchoredKey[strlen(sanitisedPattern) + 3];
-  snprintf(anchoredKey, sizeof(anchoredKey), "^%s$", sanitisedPattern);
 
-  int reti = regcomp(&regex, anchoredKey, REG_EXTENDED);
-  if (reti) {
-    fprintf(stderr, "Could not compile regex\n");
-    return NULL;
-  }
-
-  free(sanitisedPattern);
-  regmatch_t matches[1];
-  reti = regexec(&regex, key, 1, matches, 0);
-  regfree(&regex);
-
-  if (!reti ||
-      (strcmp(key, head->key) == 0)) { // returns 0 on success (both cases)
+  if (strcmp(key, head->key) == 0)
     return head;
-  } else if (reti == REG_NOMATCH) {
-    if (strcmp(key, head->key) > 0) {
-      return search(head->right, key, modify);
-    } else {
-      return search(head->left, key, modify);
-    }
-  } else {
-    fprintf(stderr, "Regex match failed\n");
-    return NULL;
-  }
+  else if (strcmp(key, head->key) > 0)
+    return search(head->right, key);
+  else
+    return search(head->left, key);
+  return NULL;
 }
 
 /* @private Places user input on the heap since its from another thread.*/
@@ -201,11 +227,11 @@ void toHeap(char **key, char **path) {
   }
 }
 
-/* @private If there is a duplicate, it wil replace its Values with the new
+/* @private If there is a duplicate, it will replace its Values with the new
  * Values.*/
 struct Route *checkDuplicates(char *key, char *path, Values *values) {
   if (root && values) {
-    struct Route *temp = search(root, key, 1);
+    struct Route *temp = search(root, key);
     if (temp != NULL) {
       free(temp->values);
       free(temp->path);
@@ -220,30 +246,30 @@ struct Route *checkDuplicates(char *key, char *path, Values *values) {
 /* Adds a http request with multiple methods/functions to be called (see
  * examples).
  * Key is the request from the browser, path is the filepath.*/
-struct Route *addRouteM(char *key, char *path, Values *uvalues) {
+struct Route *addRouteM(char *key, char *path, Values *values) {
   if (key == NULL) {
     if (path) fprintf(stderr, "No key for path: %s", path);
     return NULL;
   }
-  /*Values *values = malloc(sizeof(Values));*/
-  /*values->GET = uvalues->GET;*/
-  /*values->POST = uvalues->POST;*/
+  /*Values *uvalues = malloc(sizeof(Values));*/
+  /*uvalues->GET = values->GET;*/
+  /*uvalues->POST = values->POST;*/
 
   toHeap(&key, &path);
 
   if (!path) { // if key (minus "/") is a file, make it = path
     struct stat path_stat;
-    if (stat(key + 1, &path_stat) == 0 && !S_ISREG(path_stat.st_mode)) {
+    if (stat(key + 1, &path_stat) == 0 && S_ISREG(path_stat.st_mode)) {
       path = strdup(key + 1);
     }
   }
 
-  struct Route *temp = checkDuplicates(key, path, uvalues);
+  struct Route *temp = checkDuplicates(key, path, values);
   if (temp) {
-    printf("There is a duplicate path!\n");
+    // printf("There is a duplicate path!\n");
     return temp;
   }
-  return addRouteWorker(root, key, path, uvalues);
+  return addRouteWorker(root, key, path, values);
 }
 
 /* Adds a http request with one method (see examples).*/
@@ -255,12 +281,13 @@ struct Route *addRoute(char *key, char *path,
   }
   toHeap(&key, &path);
 
-  if (path == NULL) { // if key (minus "/") is a file, make it = path
+  if (!path) { // if key (minus "/") is a file, make it = path
     struct stat path_stat;
-    if (stat(key + 1, &path_stat) == 0 && !S_ISREG(path_stat.st_mode)) {
+    if (stat(key + 1, &path_stat) == 0 && S_ISREG(path_stat.st_mode)) {
       path = strdup(key + 1);
     }
   }
+
   Values *values = malloc(sizeof(Values));
   values->GET = NULL;
   values->POST = NULL;
@@ -271,7 +298,7 @@ struct Route *addRoute(char *key, char *path,
   }
   struct Route *temp = checkDuplicates(key, path, values);
   if (temp) {
-    printf("There is a duplicate path!\n");
+    // printf("There is a duplicate path!\n");
     return temp;
   }
   return addRouteWorker(root, key, path, values);
@@ -563,7 +590,6 @@ void *process() {
 
   while (1) {
     int client = accept(server_socket, NULL, NULL);
-    printf("client%d\n", client);
     if (client < 0) continue;
 
     char buffer[1024] = {0};
@@ -573,8 +599,8 @@ void *process() {
       continue; // Skip if no data or error
     }
     buffer[received] = '\0';
-    printf("%s", buffer);
-    // GET /example.html?search_query=popularity HTTP/1.1
+    // printf("%s", buffer);
+    //  GET /example.html?search_query=popularity HTTP/1.1
     char *clientHeader = strtok(buffer, "\n");
 
     char *questionMark = strchr(clientHeader, '?');
@@ -618,9 +644,12 @@ void *process() {
 
     /* GET */
     if (strcmp(method, "GET") == 0) {
-      struct Route *dest = search(root, urlRoute, 0);
+      struct Route *dest = search(root, urlRoute);
       res.statusCode = 200;
-      if (dest == NULL) res.statusCode = 404;
+      if (dest == NULL) {
+        dest = searchLink(urlRoute);
+        if (dest == NULL) res.statusCode = 404;
+      }
 
       if (dest && dest->values && dest->values->GET)
         dest->values->GET(&req, &res); // function from other thread
@@ -653,8 +682,7 @@ void *process() {
 
       /* POST */
     } else if (strcmp(method, "POST") == 0) {
-      printf("in post\n");
-      struct Route *dest = search(root, urlRoute, 0);
+      struct Route *dest = search(root, urlRoute);
       res.statusCode = 200;
       if (dest == NULL) res.statusCode = 404;
 

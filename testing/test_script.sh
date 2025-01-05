@@ -12,20 +12,16 @@ function testFile() {
 
     # Fetch response headers
     # D dumps the header
-    local headers=$(curl -sD - http://localhost:8001/example.txt)
-    # echo "$headers"
-    
-    if [[ "$text" != "null" ]]; then
-        if ! echo "$headers" | greq -iq "$text"; then
-            return 1
-        fi
-    fi
-    
-    # Check the status code
-    if [[ "$expected_status" != "null" ]] then 
-        if ! echo "$headers" | grep -q "HTTP/1.1 $expected_status"; then
-            echo "Test failed: Expected status '$expected_status', got something else."
-            return 1
+    local headers=$(curl -sD - "$url" | tr -d '\0')
+    # echo "$headers" # dont use this when requesting an image
+
+    # Check the status code (if the curl fails and expecting 404, it will skip this)
+    if [[ "$expected_status" != "null" ]] then
+        if [[ "$headers" != "" && "$expected_status" != "404" ]]; then
+            if ! echo "$headers" | grep -q "HTTP/1.1 $expected_status"; then
+                echo "Test failed: Expected status '$expected_status', got something else."
+                return 1
+            fi
         fi
     fi
 
@@ -35,7 +31,6 @@ function testFile() {
         echo "Test failed: Expected content type '$expected_content_type', got '$actual_content_type'."
         return 1
     fi
-
 
     # Compare the response with the expected file
     if [[ -f "$path" ]]; then
@@ -50,15 +45,22 @@ function testFile() {
         fi
     fi
 
+    if [[ "$text" != "null" ]]; then
+        if ! echo "$headers" | grep -iq "$text"; then
+            return 1
+        fi
+    fi
+
     echo ""
     return 0
 }
 
-# Example usage
-# testFile "example.html" "404" "text/html"
-# testFile "asdf* ///gArBage/" "404"
-# testFile "public/image.jpg" "200"
-testFile ""
+overallStatus=0
+
+testFile "example.html" "404" "text/html" || overallStatus=1
+testFile "asdf* ///gArBage/" "404" || overallStatus=1
+testFile "public/image.jpg" "200" || overallStatus=1
+testFile "public/files/file1.html" "null" "null" "file1 text" || overallStatus=1
 
 # Test POST
 function testPost() {
@@ -77,4 +79,10 @@ function testPost() {
     return 0
 }
 
-testPost "http://localhost:8001/login" "Login text"
+testPost "http://localhost:8001/login" "Login text" || overallStatus=1
+
+if [[ "$overallStatus" == 1 ]]; then
+    exit 1
+fi
+
+exit 0

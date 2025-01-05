@@ -1,15 +1,15 @@
 #include "../webserver.h"
 #include <assert.h>
+#include <sys/wait.h>
 
 /* put this at end of function */
 void check(Request *req, Response *res) {
-  // assert(res->contentType != NULL);
   assert(res->content.data || res->content.filePath);
   assert(res->statusCode >= 100 || res->statusCode <= 599);
   assert(req->method != NULL);
 }
 
-void getAll(Request *req, Response *res) {}
+void getAll(Request *req, Response *res) { res->content.data = "not file1 :("; }
 void garbage(Request *req, Response *res) {
   res->statusCode = 200;
   res->contentType = NULL;
@@ -20,6 +20,8 @@ void login(Request *req, Response *res) {
   res->content.data = "Login text";
   check(req, res);
 }
+
+void normalGet(Request *req, Response *res) { res->contentType = "html"; }
 
 void get() {
   // write addRoutes in here
@@ -35,7 +37,8 @@ void get() {
   // testing rewriting and overlaps
   addRoute("/public/files/*", NULL, getAll, GET);
   addRoute("/public/files/*", NULL, getAll, GET);
-  addRoute("/public/files/file1.html", "./public/files/file1.html", NULL, GET);
+  addRoute("/public/files/file1.html", "./public/files/file1.html", normalGet,
+           GET);
 }
 
 void post() { addRoute("/login", NULL, login, POST); }
@@ -47,7 +50,15 @@ int main() {
   post();
   inorder();
   sleep(1); // wait for the server to start
-  system("./test_script.sh");
+
+  int shres = system("./test_script.sh");
+  if (shres == -1) {
+    perror("system");
+  } else {
+    int exit_status = WEXITSTATUS(shres);
+    printf("Script exit status: %d\n", exit_status);
+  }
+
   keepAlive();
   // stop();
   return 0;
