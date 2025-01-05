@@ -77,11 +77,10 @@ struct Route {
 // WARNING: Do not confuse "root" with "route"
 struct Route *root = NULL; // This is the head of the binary tree
 
-/* Creates a node in the binary tree.
-
- This returns a node and therefore does not decide where the node
-
- will be in the b-tree, that is left to addRouteWorker */
+/* @private
+ * Creates a node in the binary tree.
+ * This returns a node and therefore does not decide where the node
+ * will be in the b-tree, that is left to addRouteWorker */
 struct Route *initRoute(char *key, char *path, Values *value) {
   struct Route *newRoute = (struct Route *)malloc(sizeof(struct Route));
 
@@ -97,15 +96,16 @@ struct Route *initRoute(char *key, char *path, Values *value) {
 }
 
 /* Prints the contents (nodes and their respective data) of the b-tree.*/
-void inorder(struct Route *head) {
+void inorderWorker(struct Route *head) {
   if (head != NULL) {
-    inorder(head->left);
+    inorderWorker(head->left);
     printf("%s -> %s \n", head->key, head->path);
-    inorder(head->right);
+    inorderWorker(head->right);
   }
 }
+void inorder() { inorderWorker(root); }
 
-/* Recurses through the b-tree, comparing lexicographically,
+/* @private Recurses through the b-tree, comparing lexicographically,
    It will either find a duplicate or call initRoute to create a node.*/
 struct Route *addRouteWorker(struct Route *head, char *key, char *path,
                              Values *values) {
@@ -123,7 +123,7 @@ struct Route *addRouteWorker(struct Route *head, char *key, char *path,
   return head;
 }
 
-/*Multiple string replacement.
+/* @private Multiple string replacement.
   Used to replace non POSIX regex symbols.*/
 char *sanitse(const char *regexStr) {
   const char *symbols = "*";
@@ -151,7 +151,7 @@ char *sanitse(const char *regexStr) {
   return sanitised;
 }
 
-/* Searches the b-tree for a filepath or a Regex expression.
+/* @private Searches the b-tree for a filepath or a Regex expression.
    Note: this will return the first match.*/
 struct Route *search(struct Route *head, char *key, int modify) {
   if (head == NULL) return NULL;
@@ -186,7 +186,7 @@ struct Route *search(struct Route *head, char *key, int modify) {
   }
 }
 
-/* Places user input on the heap since its from another thread.*/
+/* @private Places user input on the heap since its from another thread.*/
 void toHeap(char **key, char **path) {
   if (!key && !path) fprintf(stderr, "\nkey and path are NULL\n");
   if (key && *key) {
@@ -201,13 +201,16 @@ void toHeap(char **key, char **path) {
   }
 }
 
-/* If there is a duplicate, it wil replace its Values with the new Values.*/
-struct Route *checkDuplicates(char *key, Values *values) {
+/* @private If there is a duplicate, it wil replace its Values with the new
+ * Values.*/
+struct Route *checkDuplicates(char *key, char *path, Values *values) {
   if (root && values) {
     struct Route *temp = search(root, key, 1);
     if (temp != NULL) {
       free(temp->values);
+      free(temp->path);
       temp->values = values;
+      temp->path = path;
     }
     return temp;
   }
@@ -235,7 +238,7 @@ struct Route *addRouteM(char *key, char *path, Values *uvalues) {
     }
   }
 
-  struct Route *temp = checkDuplicates(key, uvalues);
+  struct Route *temp = checkDuplicates(key, path, uvalues);
   if (temp) {
     printf("There is a duplicate path!\n");
     return temp;
@@ -266,8 +269,7 @@ struct Route *addRoute(char *key, char *path,
   } else if (meth == POST) {
     values->POST = func;
   }
-
-  struct Route *temp = checkDuplicates(key, values);
+  struct Route *temp = checkDuplicates(key, path, values);
   if (temp) {
     printf("There is a duplicate path!\n");
     return temp;
@@ -313,6 +315,7 @@ void addStaticFiles(char *filepath) {
   free(refinedPath);
 }
 
+/* @private */
 void freeRoutes(struct Route *head) {
   if (head != NULL) {
     freeRoutes(head->left);
@@ -324,7 +327,7 @@ void freeRoutes(struct Route *head) {
   }
 }
 
-/* Gets the mime type.
+/* @private Gets the mime type.
  * Input can be "text/plain" or "txt".
  * Note: an input such as text/plain will return text/plain.*/
 char *mimes(const char *input) {
@@ -382,7 +385,7 @@ char *loadFileToString(const char *filePath) {
   return buffer;
 }
 
-/* Constructs a header.*/
+/* @private Constructs a header.*/
 char *headerBuilder(char *ext, int b404, char *header, int size,
                     size_t fileSize) {
   if (b404 == 1) {
@@ -402,7 +405,7 @@ char *headerBuilder(char *ext, int b404, char *header, int size,
   return header;
 }
 
-/* Sends a file to the browser.
+/* @private Sends a file to the browser.
  * Header may be NULL
  * Do not confuse with sendfile().*/
 void SendFile(int client, const char *filePath, char *fileType, int statusCode,
@@ -507,7 +510,7 @@ void SendFile(int client, const char *filePath, char *fileType, int statusCode,
   if (heap) free(header);
 }
 
-/* Sends data instead of a file to the browser.*/
+/* @private Sends data instead of a file to the browser.*/
 void SendData(int client, char *data, char *contentType, int statusCode,
               char *header, size_t *size) {
   if (!contentType) contentType = "text/plain";
@@ -687,8 +690,7 @@ pthread_cond_t exitCond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t exitMutex = PTHREAD_MUTEX_INITIALIZER;
 
 /* Allows the thread to not close. This function will block everything after it
-
-   (recommended to keep at end of stack). */
+ * (recommended to keep at end of stack). */
 void keepAlive() {
   // pthread_mutex_lock(&exitMutex);
   pthread_cond_wait(&exitCond, &exitMutex);
@@ -709,6 +711,7 @@ void celp(int portNum) {
 
 /* Stops the webserver */
 void stop() {
+  free(root);
   pthread_cond_signal(&exitCond);
   pthread_mutex_lock(&exitMutex);
   pthread_mutex_unlock(&exitMutex);

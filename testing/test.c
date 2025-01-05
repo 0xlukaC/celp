@@ -23,14 +23,19 @@ void login(Request *req, Response *res) {
 
 void get() {
   // write addRoutes in here
-  addRoute("/public/image.jpg", NULL, NULL, GET);
+  addRoute("/public/image.jpg", NULL, NULL, GET); // testing NULL path
 
-  addRoute("/asdf* ///gArBage/", "", garbage, GET);
+  addRoute("/", NULL, NULL, GET); // testing root and replacement of path
+  addRoute("/", "./index.html", NULL, GET);
+
+  addRoute("/asdf* ///gArBage/", "", garbage, GET); // testing junk input
   addRoute(NULL, NULL, NULL, GET);
   addRoute("", "/", NULL, GET);
 
-  addRoute("/public/assets/*", NULL, getAll, GET);
-  addRoute("/public/assets/*", NULL, getAll, GET);
+  // testing rewriting and overlaps
+  addRoute("/public/files/*", NULL, getAll, GET);
+  addRoute("/public/files/*", NULL, getAll, GET);
+  addRoute("/public/files/file1.html", "./public/files/file1.html", NULL, GET);
 }
 
 void post() { addRoute("/login", NULL, login, POST); }
@@ -40,7 +45,7 @@ int main() {
   printf("Hello, World!\n");
   get();
   post();
-  inorder(root);
+  inorder();
   sleep(1); // wait for the server to start
   system("./test_script.sh");
   keepAlive();

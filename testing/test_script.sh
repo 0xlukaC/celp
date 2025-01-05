@@ -5,6 +5,7 @@ function testFile() {
     local path="$1"
     local expected_status=${2:-"null"}
     local expected_content_type=${3:-"null"}
+    local text=${4:-"null"}
     local url="http://localhost:8001/$path"
     echo "" 
     echo "Testing $url w/ $expected_status & $expected_content_type..."
@@ -13,6 +14,12 @@ function testFile() {
     # D dumps the header
     local headers=$(curl -sD - http://localhost:8001/example.txt)
     # echo "$headers"
+    
+    if [[ "$text" != "null" ]]; then
+        if ! echo "$headers" | greq -iq "$text"; then
+            return 1
+        fi
+    fi
     
     # Check the status code
     if [[ "$expected_status" != "null" ]] then 
@@ -43,7 +50,6 @@ function testFile() {
         fi
     fi
 
-    echo "Test passed for $url."
     echo ""
     return 0
 }
@@ -52,6 +58,7 @@ function testFile() {
 # testFile "example.html" "404" "text/html"
 # testFile "asdf* ///gArBage/" "404"
 # testFile "public/image.jpg" "200"
+testFile ""
 
 # Test POST
 function testPost() {
