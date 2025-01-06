@@ -28,7 +28,7 @@ void get() {
   addRoute("/public/image.jpg", NULL, NULL, GET); // testing NULL path
 
   addRoute("/", NULL, NULL, GET); // testing root and replacement of path
-  addRoute("/", "./index.html", normalGet, GET);
+  addRoute("/", "./index.txt", normalGet, GET);
 
   addRoute("/asdf* ///gArBage/", "", garbage, GET); // testing junk input
   addRoute(NULL, NULL, NULL, GET);
@@ -37,8 +37,9 @@ void get() {
   // testing rewriting and overlaps
   addRoute("/public/files/*", NULL, getAll, GET);
   addRoute("/public/files/*", NULL, getAll, GET);
-  addRoute("/public/files/file1.html", "./public/files/file1.html", normalGet,
+  addRoute("/public/files/file1.txt", "./public/files/file1.txt", normalGet,
            GET);
+  // txt because I didn't want it showing html on the github
 }
 
 void post() { addRoute("/login", NULL, login, POST); }

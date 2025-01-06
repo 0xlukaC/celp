@@ -59,7 +59,7 @@ overallStatus=0
 
 testFile "example.html" "404" "text/html" || overallStatus=1
 testFile "asdf* ///gArBage/" "404" || overallStatus=1
-testFile "public/files/file1.html" "null" "null" "file1 text" || overallStatus=1
+testFile "public/files/file1.txt" "null" "null" "file1 text" || overallStatus=1
 testFile "public/image.jpg" "200" || overallStatus=1
 
 # Test POST

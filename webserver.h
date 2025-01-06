@@ -454,7 +454,10 @@ void SendFile(int client, const char *filePath, char *fileType, int statusCode,
     fileType = "text/plain";
 
   if (header == NULL) {
-    if (filePath) {
+    struct stat path_stat;
+
+    if (filePath && stat(filePath, &path_stat) == 0 &&
+        S_ISREG(path_stat.st_mode)) {
       FILE *fp = fopen(filePath, "r");
       fseek(fp, 0L, SEEK_END);
       size = ftell(fp);
@@ -723,9 +726,9 @@ pthread_mutex_t exitMutex = PTHREAD_MUTEX_INITIALIZER;
 /* Allows the thread to not close. This function will block everything after it
  * (recommended to keep at end of stack). */
 void keepAlive() {
-  pthread_mutex_lock(&exitMutex);
+  // pthread_mutex_lock(&exitMutex);
   pthread_cond_wait(&exitCond, &exitMutex);
-  pthread_mutex_unlock(&exitMutex);
+  // pthread_mutex_unlock(&exitMutex);
 }
 
 /* Starts the Webserver */
