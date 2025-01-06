@@ -28,7 +28,7 @@ void get() {
   addRoute("/public/image.jpg", NULL, NULL, GET); // testing NULL path
 
   addRoute("/", NULL, NULL, GET); // testing root and replacement of path
-  addRoute("/", "./index.html", NULL, GET);
+  addRoute("/", "./index.html", normalGet, GET);
 
   addRoute("/asdf* ///gArBage/", "", garbage, GET); // testing junk input
   addRoute(NULL, NULL, NULL, GET);
@@ -59,8 +59,8 @@ int main() {
     printf("Script exit status: %d\n", exit_status);
   }
 
-  keepAlive();
-  // stop();
+  // keepAlive();
+  stop();
   return 0;
 }
 

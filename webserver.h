@@ -100,6 +100,7 @@ struct Route *initRoute(char *key, char *path, Values *value) {
   newRoute->left = newRoute->right = NULL;
 
   newLinked->route = newRoute;
+  newLinked->next = NULL;
 
   if (root == NULL) root = newRoute;
 
@@ -281,7 +282,7 @@ struct Route *addRoute(char *key, char *path,
   }
   toHeap(&key, &path);
 
-  if (!path) { // if key (minus "/") is a file, make it = path
+  if (path == NULL) { // if key (minus "/") is a file, make it = path
     struct stat path_stat;
     if (stat(key + 1, &path_stat) == 0 && S_ISREG(path_stat.st_mode)) {
       path = strdup(key + 1);
@@ -534,7 +535,7 @@ void SendFile(int client, const char *filePath, char *fileType, int statusCode,
   setsockopt(client, IPPROTO_TCP, TCP_CORK, &off, 4);
   // setsockopt(client, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on));
   close(opened_fd);
-  if (heap) free(header);
+  if (heap == 1) free(header);
 }
 
 /* @private Sends data instead of a file to the browser.*/
@@ -663,10 +664,12 @@ void *process() {
       }
 
       struct stat file_stat;
-      stat(res.content.filePath, &file_stat);
-      if (!S_ISREG((file_stat.st_mode))) {
+      if (stat(res.content.filePath, &file_stat) == 0) {
+        if (!S_ISREG((file_stat.st_mode))) {
+          res.statusCode = 404;
+        }
+      } else
         res.statusCode = 404;
-      }
 
       if (res.content.data && !res.content.filePath) res.statusCode = 200;
 
@@ -720,9 +723,9 @@ pthread_mutex_t exitMutex = PTHREAD_MUTEX_INITIALIZER;
 /* Allows the thread to not close. This function will block everything after it
  * (recommended to keep at end of stack). */
 void keepAlive() {
-  // pthread_mutex_lock(&exitMutex);
+  pthread_mutex_lock(&exitMutex);
   pthread_cond_wait(&exitCond, &exitMutex);
-  // pthread_mutex_unlock(&exitMutex);
+  pthread_mutex_unlock(&exitMutex);
 }
 
 /* Starts the Webserver */
@@ -739,7 +742,8 @@ void celp(int portNum) {
 
 /* Stops the webserver */
 void stop() {
-  free(root);
+  freeRoutes(root);
+  // free(root);
   pthread_cond_signal(&exitCond);
   pthread_mutex_lock(&exitMutex);
   pthread_mutex_unlock(&exitMutex);
