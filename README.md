@@ -94,11 +94,19 @@ int main() {
   return 0;
 }
 
-
 ```
+> [!IMPORTANT]
+> If your header file has errors, it's likley because gcc views it as a c++ file. You need to create a compile_flags.txt in the directory and put 
+> ```
+> compileFlags:
+>   Add: [-x, c]
+> ``` 
 
 ## Contributing
 Celp welcomes all constructive contributions. Please feel free to submit pull requests or open issues (preferably open an issue first, as it expedites the process for all parties). It would be helpful to write/update tests if your feature requires it (more so testing end input, ie. curling, see [`/testing`](https://github.com/0xlukaC/celp/tree/main/testing)).
+
+>[!TIP]
+>compile `testing/test.c` to run tests
 
 For insights on contributing effectively to open source, consider watching this [Don't contribute to open source](https://www.youtube.com/watch?v=5nY_cy8zcO4) - TLDR: Use open source, notice a bug, investigate the bug, write a bug report and offer to fix it
 
