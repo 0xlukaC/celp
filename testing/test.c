@@ -50,14 +50,16 @@ int main() {
   get();
   post();
   inorder();
-  sleep(1); // wait for the server to start
+  sleep(1); // wait for the server to start (just in case)
 
   int shres = system("./test_script.sh");
   if (shres == -1) {
     perror("system");
+    return 1;
   } else {
     int exit_status = WEXITSTATUS(shres);
     printf("Script exit status: %d\n", exit_status);
+    if (exit_status != 0) return 1;
   }
 
   // keepAlive();
