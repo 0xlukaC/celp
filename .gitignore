@@ -1,3 +1,4 @@
 exec
-examples.c
 compile_flags.txt
+*.exe
+*.out

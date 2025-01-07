@@ -1,5 +1,6 @@
 #include "../webserver.h"
 #include <assert.h>
+#include <stdio.h>
 #include <sys/wait.h>
 
 /* put this at end of function */
@@ -9,7 +10,10 @@ void check(Request *req, Response *res) {
   assert(req->method != NULL);
 }
 
-void getAll(Request *req, Response *res) { res->content.data = "not file1 :("; }
+void getAll(Request *req, Response *res) {
+  res->content.data = "not file1 :(";
+  printf("path: %s baseurl: %s\n", req->path, req->baseUrl);
+}
 void garbage(Request *req, Response *res) {
   res->statusCode = 200;
   res->contentType = NULL;
@@ -39,7 +43,7 @@ void get() {
   addRoute("/public/files/*", NULL, getAll, GET);
   addRoute("/public/files/file1.txt", "./public/files/file1.txt", normalGet,
            GET);
-  // txt because I didn't want it showing html on the github
+  // txt because I didn't want it showing html as a language on github
 }
 
 void post() { addRoute("/login", NULL, login, POST); }

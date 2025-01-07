@@ -623,11 +623,25 @@ void *process() {
       query = strtok(NULL, " ");
     }
 
-    char temp[strlen(urlRoute)];
+    char temp[strlen(urlRoute) + 1];
     strcpy(temp, urlRoute);
-    char *baseUrl = strtok(temp, "/"); // Gets first part after '/'
-    char *path = NULL;
-    if (baseUrl) path = strtok(NULL, "");
+
+    char baseUrl[strlen(temp) + 1];
+    char path[strlen(temp) + 1];
+
+    char *lastSlash = strrchr(temp, '/');
+    if (lastSlash) {
+      *lastSlash = '\0';     // Terminate baseUrl here
+      strcpy(baseUrl, temp); // Base URL is everything up to the last slash
+      strcpy(path, lastSlash + 1); // Path is everything after the last slash
+    } else {
+      // If no '/', the entire route is the baseUrl and path is empty
+      strcpy(baseUrl, temp);
+      strcpy(path, "");
+    }
+
+    /*printf("Base URL: %s\n", baseUrl);*/
+    /*printf("Path: %s\n", path);*/
 
     if (strcmp(urlRoute, "/") == 0)
       fileType = "html"; // This will be text/plain otherwise
