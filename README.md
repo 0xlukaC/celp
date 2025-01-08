@@ -95,8 +95,10 @@ int main() {
 }
 
 ```
-> [!IMPORTANT]
-> If your header file has errors, it's likley because gcc views it as a c++ file. You need to create a compile_flags.txt in the directory and put 
+> [!WARNING]
+> You may have to include `-pthread` in your compilation. Eg: `gcc <file> -o <executable> -pthread`
+> 
+> If your header file has errors, it's likley because your editor (namely neovim) views it as a c++ file. You need to create a compile_flags.txt in the directory and put 
 > ```
 > compileFlags:
 >   Add: [-x, c]
