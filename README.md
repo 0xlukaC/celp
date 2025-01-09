@@ -13,7 +13,7 @@
 
 # Installation
 
-Either copy/download [`webserver.h`](github.com/0xlukaC/celp/blob/testing/webserver.h) into your source tree or download it through [`Releases`](github.com/0xlukaC/celp/releases)
+Either copy/download [`webserver.h`]([github.com/0xlukaC/celp/blob/testing/webserver.h](https://github.com/0xlukaC/celp/blob/main/webserver.h)) into your source tree or download it through [`Releases`](github.com/0xlukaC/celp/releases)
 
 > [!NOTE]
 > This will not run on any Windows operating systems
