@@ -236,6 +236,7 @@ struct Route *checkDuplicates(char *key, char *path, Values *values) {
     if (temp != NULL) {
       free(temp->values);
       free(temp->path);
+      free(key);
       temp->values = values;
       temp->path = path;
     }
@@ -343,15 +344,27 @@ void addStaticFiles(char *filepath) {
   free(refinedPath);
 }
 
+void freeLinked(struct LinkedRoute *head) {
+  if (head != NULL) {
+    freeLinked(head->next);
+    free(head);
+  }
+}
+
 /* @private */
 void freeRoutes(struct Route *head) {
   if (head != NULL) {
     freeRoutes(head->left);
     freeRoutes(head->right);
     free(head->key);
+    head->key = NULL;
     if (head->path) free(head->path);
     free(head->values);
     free(head);
+  }
+  if (linkedRoot != NULL) {
+    freeLinked(linkedRoot);
+    linkedRoot = NULL;
   }
 }
 
@@ -478,6 +491,7 @@ void SendFile(int client, const char *filePath, char *fileType, int statusCode,
     send(client, header, strlen(header), 0);
     send(client, errorPage, strlen(errorPage), 0);
     close(client);
+    if (heap) free(header);
     return;
   }
 
@@ -733,7 +747,7 @@ void *process() {
 }
 
 /* begin interface */
-
+pthread_t webserver;
 pthread_cond_t exitCond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t exitMutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -748,22 +762,28 @@ void keepAlive() {
 /* Starts the Webserver */
 void celp(int portNum) {
   port = portNum;
-  pthread_t webserver;
   int status = pthread_create(&webserver, NULL, process, NULL);
   if (status != 0) {
     perror("Failed to create thread");
     return;
   }
-  pthread_detach(webserver);
+  // pthread_detach(webserver);
 }
 
 /* Stops the webserver */
 void stop() {
   freeRoutes(root);
-  // free(root);
-  pthread_cond_signal(&exitCond);
+  // Lock the mutex before signaling
   pthread_mutex_lock(&exitMutex);
+  // Signal the condition variable to potentially wake up the waiting thread
+  pthread_cond_signal(&exitCond);
+  // Unlock the mutex after signaling
   pthread_mutex_unlock(&exitMutex);
+  // Cancel the webserver thread
+  pthread_cancel(webserver);
+  // Join the thread to clean up resources
+  pthread_join(webserver, NULL);
+
   printf("Web server stopped.\n");
 }
 

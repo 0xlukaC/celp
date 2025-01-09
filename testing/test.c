@@ -31,9 +31,9 @@ void get() {
   // write addRoutes in here
   addRoute("/public/image.jpg", NULL, NULL, GET); // testing NULL path
 
-  addRoute("/", NULL, NULL, GET); // testing root and replacement of path
   addRoute("/", "./index.txt", normalGet, GET);
-
+  addRoute("/", NULL, NULL, GET); // testing root and replacement of path
+  /**/
   addRoute("/asdf* ///gArBage/", "", garbage, GET); // testing junk input
   addRoute(NULL, NULL, NULL, GET);
   addRoute("", "/", NULL, GET);

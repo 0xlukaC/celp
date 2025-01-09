@@ -16,7 +16,7 @@ function testFile() {
     # echo "$headers" # dont use this when requesting an image
 
     # Check the status code (if the curl fails and expecting 404, it will skip this)
-    if [[ "$expected_status" != "null" ]] then
+    if [[ "$expected_status" != "null" ]]; then
         if [[ "$headers" != "" && "$expected_status" != "404" ]]; then
             if ! echo "$headers" | grep -q "HTTP/1.1 $expected_status"; then
                 echo "Test failed: Expected status '$expected_status', got something else."
@@ -55,12 +55,6 @@ function testFile() {
     return 0
 }
 
-overallStatus=0
-
-testFile "example.html" "404" "text/html" || overallStatus=1
-testFile "asdf* ///gArBage/" "404" || overallStatus=1
-testFile "public/files/file1.txt" "null" "null" "file1 text" || overallStatus=1
-testFile "public/image.jpg" "200" || overallStatus=1
 
 # Test POST
 function testPost() {
@@ -78,6 +72,14 @@ function testPost() {
     fi
     return 0
 }
+
+overallStatus=0
+
+testFile "example.html" "404" "text/html" || overallStatus=1
+testFile "asdf* ///gArBage/" "404" || overallStatus=1
+testFile "public/files/file1.txt" "null" "null" "file1 text" || overallStatus=1
+testFile "public/image.jpg" "200" || overallStatus=1
+testFile "" "404" "text/html" # "/"
 
 testPost "http://localhost:8001/login" "Login text" || overallStatus=1
 
