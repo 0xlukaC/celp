@@ -1,0 +1,37 @@
+name: test CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - run: echo $(cd .. && pwd && cd ../.. && pwd)
+    
+    - name: Install GCC, Valgrind and curl
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc valgrind curl
+
+    - name: Ensure test_script.sh is executable
+      working-directory: ./testing
+      run: chmod +x ./test_script.sh
+
+    - name: Compile test.c
+      working-directory: ./testing
+      run: gcc test.c -o test
+
+    - name: Run test
+      working-directory: ./testing
+      run: ./test
+
+    - name: Run Valgrind
+      working-directory: ./testing
+      run: valgrind ./test
