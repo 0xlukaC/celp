@@ -617,6 +617,9 @@ void *process() {
       continue; // Skip if no data or error
     }
     buffer[received] = '\0';
+    char reserveBuffer[1024];
+    strncpy(reserveBuffer, buffer, sizeof(reserveBuffer) - 1);
+    reserveBuffer[sizeof(reserveBuffer) - 1] = '\0'; // Ensure null-termination
     // printf("%s", buffer);
     //  GET /example.html?search_query=popularity HTTP/1.1
     char *clientHeader = strtok(buffer, "\n");
@@ -664,11 +667,12 @@ void *process() {
     /*       urlRoute, fileType, param, query);*/
 
     char *body = NULL;
-    char *body_start = strstr(buffer, "\r\n\r\n");
+    char *body_start = strstr(reserveBuffer, "\r\n\r\n");
     if (body_start) {
       body_start += 4;           // Skip past the \r\n\r\n
       body = strdup(body_start); // Store the body in the variable
     }
+    if (!body) body = strdup("");
 
     Request req = {method,   urlRoute, path,  baseUrl,
                    fileType, param,    query, body};
@@ -738,7 +742,7 @@ void *process() {
         send(client, errorPage, strlen(errorPage), 0);
       }
     }
-    if (body) free(body); // since its the only one on heap
+    if (body || body[0] != '\0') free(body); // since its the only one on heap
     close(client);
   }
   // untouched code
