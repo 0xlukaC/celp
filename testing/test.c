@@ -25,7 +25,12 @@ void login(Request *req, Response *res) {
   check(req, res);
 }
 
-void normalGet(Request *req, Response *res) { res->contentType = "html"; }
+void normalGet(Request *req, Response *res) {
+  res->contentType = "html";
+  char output[1024];
+  req->body("Accept", output, req);
+  printf("output: %s\n", output);
+}
 
 void get() {
   // write addRoutes in here

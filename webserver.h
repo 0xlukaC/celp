@@ -51,8 +51,8 @@ typedef struct req_ {
   const char *fileType;
   const char *param;
   const char *query;
-
-  const char *body;
+  const char *bodyFull;
+  void (*body)(char *search, char *output, struct req_ *req);
 } Request;
 
 /* Holds user specified handler functions for each HTTP method.*/
@@ -62,6 +62,38 @@ typedef struct Values_ {
 } Values;
 
 typedef enum { GET, POST } Method;
+
+/* Allows selecting a line out of the request header body (see examples)*/
+void bodyF(char *str, char *output, Request *req) {
+  if (!req || !req->bodyFull || req->bodyFull[0] == '\0' || !str) {
+    printf("returned early\n");
+    return;
+  }
+  char *backup = malloc(strlen(req->bodyFull) + 1);
+  strcpy(backup, req->bodyFull);
+
+  char *find = strstr(backup, str);
+  char cut[1024];
+  if (!find || *(find - 1) != '\n') {
+    output[0] = '\0';
+    return;
+  }
+  char *colon = strchr(find, ':');
+  if (colon)
+    colon += 2;
+  else
+    colon = find;
+
+  int i = 0;
+  // find[i]
+  while (colon[i] != '\r' && i < strlen(req->bodyFull)) {
+    cut[i] = colon[i];
+    i++;
+  }
+  cut[i] = '\0';
+  free(backup);
+  strcpy(output, cut);
+}
 
 /* Node for the binary tree
 
@@ -667,15 +699,15 @@ void *process() {
     /*       urlRoute, fileType, param, query);*/
 
     char *body = NULL;
-    char *body_start = strstr(reserveBuffer, "\r\n\r\n");
+    char *body_start = strstr(reserveBuffer, "\n");
     if (body_start) {
-      body_start += 4;           // Skip past the \r\n\r\n
+      body_start += 1;           // skip past \n
       body = strdup(body_start); // Store the body in the variable
     }
     if (!body) body = strdup("");
 
-    Request req = {method,   urlRoute, path,  baseUrl,
-                   fileType, param,    query, body};
+    Request req = {method, urlRoute, path, baseUrl, fileType,
+                   param,  query,    body, bodyF};
     Response res = {};
 
     /* GET */

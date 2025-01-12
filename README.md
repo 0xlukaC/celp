@@ -44,6 +44,14 @@ void getRoot(Request *req, Response *res) {
   req->param // Parameter of url Route
   req->query // Query of url Route
   req->fileType // The file extenstion of the url Request
+  req->bodyFull // All the request headers
+  
+  // This allows you to select a value out of the request body
+  // eg: "Accept: *'/'* "
+  char output[1024];
+  req->body("Accept", output, req);
+  printf("output: %s\n", output); // output = " *'/'* " something like this
+
 
   Note: You do not have to assign values for the following properties.
   They are optional
