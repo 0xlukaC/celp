@@ -11,14 +11,14 @@
 > [!NOTE]
 > This webserver is still in early development
 
-# Installation
+## Installation
 
 Either copy/download [`webserver.h`](https://github.com/0xlukaC/celp/blob/main/webserver.h) into your source tree or download it through [`Releases`](https://github.com/0xlukaC/celp/releases)
 
 > [!NOTE]
 > This will not run on any Windows operating systems
 
-# Examples
+## Examples
 ```c
 #include "webserver.h"
 
