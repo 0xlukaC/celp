@@ -8,9 +8,6 @@
 <b>Celp</b> (pronounced "Kelp") is a lightweight, standalone header file that provides a fast, efficient web server framework for C on Linux, perfect for small, localhost projects. It is designed with a high level of abstraction, allowing you to focus on your code, without the awkward hassle of setting up a webserver. Celp allows you to intergrate the webserver into your code, allowing for a streamline experience.
 
 
-> [!NOTE]
-> This webserver is still in early development
-
 ## Installation
 
 Either copy/download [`webserver.h`](https://github.com/0xlukaC/celp/blob/main/webserver.h) into your source tree or download it through [`Releases`](https://github.com/0xlukaC/celp/releases)
