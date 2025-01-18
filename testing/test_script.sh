@@ -55,6 +55,35 @@ function testFile() {
     return 0
 }
 
+# test HEAD
+function testHead() {
+    local path="$1"
+    local expected_status=${2:-"null"}
+    local expected_content_type=${3:-"null"}
+    local url="http://localhost:8001/$path"
+
+    local headers=$(curl -X HEAD "$url" -f -s | tr -d '\0')
+    echo "$headers"
+
+    if [[ "$expected_status" != "null" ]]; then
+        if [[ "$headers" != "" && "$expected_status" != "404" ]]; then
+            if ! echo "$headers" | grep -q "HTTP/1.1 $expected_status"; then
+                echo "Test failed: Expected status '$expected_status', got something else."
+                return 1
+            fi
+        fi
+    fi
+
+    # Check the content type
+    local actual_content_type=$(echo "$headers" | grep -i "Content-Type" | awk '{print $2}' | tr -d '\r')
+    if [[ "$expected_content_type" != "null" && "$actual_content_type" != "$expected_content_type" ]]; then
+        echo "Test failed: Expected content type '$expected_content_type', got '$actual_content_type'."
+        return 1
+    fi
+    echo ""
+    return 0
+
+}
 
 # Test POST
 function testPost() {
@@ -80,6 +109,9 @@ testFile "asdf* ///gArBage/" "404" || overallStatus=1
 testFile "public/files/file1.txt" "null" "null" "file1 text" || overallStatus=1
 testFile "public/image.jpg" "200" || overallStatus=1
 testFile "" "404" "text/html" # "/"
+
+# HEAD
+testHead "public/image.jpg" "200" || overallStatus=1
 
 testPost "http://localhost:8001/login" "Login text" || overallStatus=1
 

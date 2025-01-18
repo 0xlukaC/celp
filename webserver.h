@@ -491,7 +491,6 @@ char *headerBuilder(char *ext, int statusCode, char *header, int size,
                     size_t fileSize) {
   char *mime = mimes(ext);
   char *statusString = status_message(statusCode);
-  printf("%s\n", statusString);
   snprintf(header, size,
            "HTTP/1.1 %s\r\n"
            "Content-Type: %s\r\n"
@@ -506,7 +505,7 @@ char *headerBuilder(char *ext, int statusCode, char *header, int size,
  * Header may be NULL
  * Do not confuse with sendfile().*/
 void SendFile(int client, const char *filePath, char *fileType, int statusCode,
-              char *header) {
+              char *header, char *method) {
   size_t size;
   int heap = 0;
 
@@ -562,6 +561,7 @@ void SendFile(int client, const char *filePath, char *fileType, int statusCode,
 
   send(client, header, strlen(header), 0);
 
+  if (strcmp(method, "HEAD") == 0) return;
   // send(client, loadFileToString(filePath), size, 0);
 
   while (offset < size) {
@@ -613,7 +613,7 @@ void SendFile(int client, const char *filePath, char *fileType, int statusCode,
 
 /* @private Sends data instead of a file to the browser.*/
 void SendData(int client, char *data, char *contentType, int statusCode,
-              char *header, size_t *size) {
+              char *header, size_t *size, char *method) {
   if (!contentType) contentType = "text/plain";
 
   int heap = 0;
@@ -623,7 +623,7 @@ void SendData(int client, char *data, char *contentType, int statusCode,
     heap = 1;
   }
   if (statusCode == 404)
-    SendFile(client, NULL, NULL, 404, NULL);
+    SendFile(client, NULL, NULL, 404, NULL, method);
   else if (data) {
     send(client, header, strlen(header), 0);
     send(client, data, *size, 0);
@@ -734,8 +734,8 @@ void *process() {
                    param,  query,    body, bodyF};
     Response res = {};
 
-    /* GET */
-    if (strcmp(method, "GET") == 0) {
+    /* GET || HEAD */
+    if (strcmp(method, "GET") == 0 || strcmp(method, "HEAD") == 0) {
       struct Route *dest = search(root, urlRoute);
       res.statusCode = 200;
       if (dest == NULL) {
@@ -767,11 +767,11 @@ void *process() {
       char *header = (res.body != NULL) ? res.body : NULL;
       if (!res.content.data)
         SendFile(client, res.content.filePath, res.contentType, res.statusCode,
-                 header);
+                 header, method);
       else if (res.content.data) {
         size_t size = strlen(res.content.data);
         SendData(client, res.content.data, res.contentType, res.statusCode,
-                 header, &size);
+                 header, &size, method);
       }
 
       /* POST */
@@ -788,11 +788,11 @@ void *process() {
       if (res.content.data) {
         size_t size = strlen(res.content.data);
         SendData(client, res.content.data, res.contentType, res.statusCode,
-                 NULL, &size);
+                 NULL, &size, method);
       } else if (res.content.filePath) {
         size_t size = strlen(res.content.filePath);
         SendFile(client, res.content.filePath, res.contentType, res.statusCode,
-                 NULL);
+                 NULL, method);
       } else {
         send(client, header404, strlen(header404), 0);
         send(client, errorPage, strlen(errorPage), 0);
