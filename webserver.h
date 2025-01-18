@@ -431,7 +431,35 @@ char *mimes(const char *input) {
   for (size_t i = 0; i < sizeof(mime_map) / sizeof(mime_map[0]); i++)
     if (strcmp(input, mime_map[i].key) == 0) return (char *)mime_map[i].mime;
 
-  return "text/plain";
+  return "text/html";
+}
+
+/* @private */
+char *status_message(int code) {
+  static const struct {
+    int code;
+    char *message;
+  } status_map[] = {
+      {200, "200 OK"},
+      {201, "201 Created"},
+      {202, "202 Accepted"},
+      {204, "204 No Content"},
+      {400, "400 Bad Request"},
+      {401, "401 Unauthorized"},
+      {403, "403 Forbidden"},
+      {404, "404 Not Found"},
+      {405, "405 Method Not Allowed"},
+      {500, "500 Internal Server Error"},
+      {501, "501 Not Implemented"},
+      {502, "502 Bad Gateway"},
+      {503, "503 Service Unavailable"},
+      {504, "504 Gateway Timeout"},
+  };
+
+  for (size_t i = 0; i < sizeof(status_map) / sizeof(status_map[0]); i++)
+    if (status_map[i].code == code) return status_map[i].message;
+
+  return "500 Internal Server Error"; // Default if status code is not found
 }
 
 /* Loads content of a file to a string.*/
@@ -458,23 +486,19 @@ char *loadFileToString(const char *filePath) {
   return buffer;
 }
 
-/* @private Constructs a header.*/
-char *headerBuilder(char *ext, int b404, char *header, int size,
+/* Constructs a header.*/
+char *headerBuilder(char *ext, int statusCode, char *header, int size,
                     size_t fileSize) {
-  if (b404 == 1) {
-    snprintf(header, size,
-             "HTTP/1.1 404 Not Found\r\n"
-             "Content-Type: text/html\r\n"
-             "Content-Length: %zu\r\n\r\n",
-             fileSize);
-  } else {
-    snprintf(header, size,
-             "HTTP/1.1 200 OK\r\n"
-             "Content-Type: %s\r\n"
-             "Content-Length: %zu\r\n"
-             "Connection: keep-alive\r\n\r\n",
-             mimes(ext), fileSize);
-  }
+  char *mime = mimes(ext);
+  char *statusString = status_message(statusCode);
+  printf("%s\n", statusString);
+  snprintf(header, size,
+           "HTTP/1.1 %s\r\n"
+           "Content-Type: %s\r\n"
+           "Content-Length: %zu\r\n"
+           "Connection: keep-alive\r\n\r\n",
+           statusString, mime, fileSize);
+
   return header;
 }
 
@@ -515,7 +539,7 @@ void SendFile(int client, const char *filePath, char *fileType, int statusCode,
     }
     header = malloc(512);
     heap = 1;
-    headerBuilder(fileType, (statusCode == 404), header, 512, size);
+    headerBuilder(fileType, statusCode, header, 512, size);
   }
   if (page404 && (!filePath || statusCode == 404)) filePath = page404;
 
