@@ -429,8 +429,9 @@ char *mimes(const char *input) {
       {"application/json", "application/json"},
   };
   for (size_t i = 0; i < sizeof(mime_map) / sizeof(mime_map[0]); i++)
-    if (strcmp(input, mime_map[i].key) == 0) return (char *)mime_map[i].mime;
-
+    if (strcmp(input, mime_map[i].key) == 0 ||
+        strcmp(input, mime_map[i].mime) == 0)
+      return (char *)mime_map[i].mime;
   return "text/html";
 }
 
